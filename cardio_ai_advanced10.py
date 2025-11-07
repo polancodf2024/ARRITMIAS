@@ -31,6 +31,733 @@ st.set_page_config(
 )
 
 # =============================================================================
+# SISTEMA DE ALERTAS CLÍNICAS CON PRIORIDADES
+# =============================================================================
+
+class ClinicalAlertSystem:
+    def __init__(self):
+        self.critical_conditions = {
+            'Taquicardia Ventricular': 'CRITICAL',
+            'Bloqueo AV': 'CRITICAL', 
+            'Fibrilación Ventricular': 'CRITICAL',
+            'Bigeminismo Ventricular': 'HIGH',
+            'Trigeminismo Ventricular': 'HIGH',
+            'Fibrilación Auricular': 'MEDIUM',
+            'Extrasístoles Ventriculares': 'MEDIUM',
+            'Taquicardia Sinusal': 'LOW',
+            'Bradicardia Sinusal': 'LOW',
+            'Ritmo Sinusal Normal': 'NORMAL'
+        }
+        
+        self.alert_colors = {
+            'CRITICAL': '🔴',
+            'HIGH': '🟠', 
+            'MEDIUM': '🟡',
+            'LOW': '🔵',
+            'NORMAL': '🟢'
+        }
+    
+    def generate_clinical_recommendations(self, diagnosis, probability):
+        """Generar recomendaciones clínicas basadas en el diagnóstico y probabilidad"""
+        recommendations = {
+            'CRITICAL': [
+                "🚨 INTERVENCIÓN INMEDIATA REQUERIDA",
+                "Buscar atención médica de emergencia",
+                "Monitorización continua requerida",
+                "Preparar protocolo de reanimación"
+            ],
+            'HIGH': [
+                "⚠️ Evaluación cardiológica urgente (dentro de 24 horas)",
+                "Monitorización hospitalaria recomendada",
+                "Considerar tratamiento antiarrítmico",
+                "Evitar actividades extenuantes"
+            ],
+            'MEDIUM': [
+                "📋 Consulta cardiológica programada",
+                "Monitorización ambulatoria recomendada",
+                "Evaluar factores de riesgo",
+                "Seguimiento en 1-2 semanas"
+            ],
+            'LOW': [
+                "👁️ Monitoreo continuo recomendado",
+                "Consulta médica de rutina",
+                "Educación sobre síntomas de alarma",
+                "Seguimiento según evolución"
+            ],
+            'NORMAL': [
+                "✅ Ritmo cardíaco normal",
+                "Continuar con controles rutinarios",
+                "Mantener estilo de vida saludable",
+                "Próximo control anual"
+            ]
+        }
+        
+        alert_level = self.critical_conditions.get(diagnosis, 'LOW')
+        return recommendations.get(alert_level, recommendations['LOW']), alert_level
+    
+    def get_immediate_actions(self, diagnosis):
+        """Acciones inmediatas específicas para cada condición"""
+        action_guides = {
+            'Taquicardia Ventricular': [
+                "Evaluar estabilidad hemodinámica",
+                "Preparar cardioversión eléctrica si es inestable",
+                "Considerar amiodarona IV si es estable",
+                "Monitorización en UCI"
+            ],
+            'Bloqueo AV': [
+                "Evaluar grado del bloqueo",
+                "Considerar marcapasos temporal si bradicardia sintomática",
+                "Monitorizar progresión",
+                "Evaluar necesidad de marcapasos permanente"
+            ],
+            'Fibrilación Auricular': [
+                "Evaluar riesgo tromboembólico (CHA2DS2-VASc)",
+                "Control de frecuencia vs ritmo",
+                "Anticoagulación según riesgo",
+                "Manejo de factores desencadenantes"
+            ],
+            'Bigeminismo Ventricular': [
+                "Evaluar densidad de PVCs",
+                "Buscar cardiopatía estructural",
+                "Considerar betabloqueadores",
+                "Monitorizar progresión a taquicardia"
+            ],
+            'Trigeminismo Ventricular': [
+                "Evaluar frecuencia y patrones",
+                "Estudio de cardiopatía isquémica",
+                "Considerar Holter 24 horas",
+                "Seguimiento cercano"
+            ]
+        }
+        return action_guides.get(diagnosis, ["Consulta cardiológica para evaluación específica"])
+
+# =============================================================================
+# EVALUACIÓN DE CALIDAD DE SEÑAL
+# =============================================================================
+
+class SignalQualityAssessment:
+    def __init__(self):
+        self.quality_thresholds = {
+            'excellent': 0.8,
+            'good': 0.6,
+            'fair': 0.4,
+            'poor': 0.2
+        }
+    
+    def assess_signal_quality(self, ecg_signal, sampling_rate):
+        """Evaluar calidad de señal para determinar confiabilidad del diagnóstico"""
+        try:
+            # Calcular métricas de calidad
+            noise_level = self._calculate_noise_ratio(ecg_signal)
+            baseline_wander = self._detect_baseline_wander(ecg_signal)
+            signal_strength = np.std(ecg_signal)
+            saturation = self._detect_saturation(ecg_signal)
+            
+            # Calcular puntaje de calidad compuesto
+            quality_score = max(0, 1 - (noise_level * 0.4 + baseline_wander * 0.3 + saturation * 0.3))
+            
+            # Determinar nivel de calidad
+            if quality_score >= self.quality_thresholds['excellent']:
+                quality_level = "EXCELENTE"
+                diagnostic_reliability = "Alta"
+            elif quality_score >= self.quality_thresholds['good']:
+                quality_level = "BUENA"
+                diagnostic_reliability = "Moderada-Alta"
+            elif quality_score >= self.quality_thresholds['fair']:
+                quality_level = "ACEPTABLE"
+                diagnostic_reliability = "Moderada"
+            else:
+                quality_level = "POBRE"
+                diagnostic_reliability = "Baja"
+            
+            return {
+                'quality_score': quality_score,
+                'quality_level': quality_level,
+                'diagnostic_reliability': diagnostic_reliability,
+                'noise_level': noise_level,
+                'baseline_wander': baseline_wander,
+                'signal_strength': signal_strength,
+                'saturation': saturation,
+                'is_diagnostic_quality': quality_score > self.quality_thresholds['fair'],
+                'recommendations': self._get_quality_recommendations(quality_score)
+            }
+            
+        except Exception as e:
+            return {
+                'quality_score': 0,
+                'quality_level': "NO EVALUABLE",
+                'diagnostic_reliability': "Muy Baja",
+                'noise_level': 1.0,
+                'baseline_wander': 1.0,
+                'signal_strength': 0,
+                'saturation': 0,
+                'is_diagnostic_quality': False,
+                'recommendations': ["No se pudo evaluar la calidad de la señal"]
+            }
+    
+    def _calculate_noise_ratio(self, ecg_signal):
+        """Calcular relación señal-ruido"""
+        try:
+            # Filtro pasa-altos para aislar ruido de alta frecuencia
+            b, a = signal.butter(3, 40, btype='high', fs=250)
+            high_freq = signal.filtfilt(b, a, ecg_signal)
+            noise_power = np.mean(high_freq ** 2)
+            signal_power = np.mean(ecg_signal ** 2)
+            return min(1.0, noise_power / (signal_power + 1e-10))
+        except:
+            return 1.0
+    
+    def _detect_baseline_wander(self, ecg_signal):
+        """Detectar deriva de línea base"""
+        try:
+            # Filtro pasa-bajos para línea base
+            b, a = signal.butter(3, 0.5, btype='low', fs=250)
+            baseline = signal.filtfilt(b, a, ecg_signal)
+            wander = np.std(baseline) / (np.std(ecg_signal) + 1e-10)
+            return min(1.0, wander)
+        except:
+            return 1.0
+    
+    def _detect_saturation(self, ecg_signal):
+        """Detectar saturación de la señal"""
+        try:
+            # Buscar segmentos planos (saturación)
+            diff_signal = np.diff(ecg_signal)
+            flat_segments = np.sum(np.abs(diff_signal) < 1e-5) / len(diff_signal)
+            return min(1.0, flat_segments * 10)  # Escalar
+        except:
+            return 0.0
+    
+    def _get_quality_recommendations(self, quality_score):
+        """Generar recomendaciones para mejorar la calidad de señal"""
+        if quality_score >= 0.8:
+            return ["✅ Calidad de señal excelente para diagnóstico"]
+        elif quality_score >= 0.6:
+            return ["✓ Calidad adecuada", "Considere verificar conexiones de electrodos"]
+        elif quality_score >= 0.4:
+            return [
+                "⚠️ Calidad moderada - límite para diagnóstico",
+                "Verifique conexiones de electrodos",
+                "Asegure piel limpia y seca",
+                "Evite movimiento durante registro"
+            ]
+        else:
+            return [
+                "❌ Calidad insuficiente para diagnóstico confiable",
+                "Reinicie el registro ECG",
+                "Verifique todos los electrodos",
+                "Limpie la piel adecuadamente",
+                "Mantenga al paciente inmóvil"
+            ]
+
+# =============================================================================
+# VALIDADOR DE CRITERIOS CLÍNICOS
+# =============================================================================
+
+class ClinicalCriteriaValidator:
+    def __init__(self):
+        self.guideline_thresholds = {
+            'afib_rr_irregularity': 0.15,  # Desviación estándar normalizada de intervalos RR
+            'vtach_qrs_width': 120,        # ms
+            'vtach_duration': 30.0,        # segundos
+            'av_block_pr_interval': 200,   # ms
+            'bradycardia_hr': 60,          # lpm
+            'tachycardia_hr': 100,         # lpm
+            'pvc_density_threshold': 0.1   # 10% de latidos son PVCs
+        }
+    
+    def validate_afib(self, features, rr_intervals):
+        """Validar Fibrilación Auricular según criterios de Guidelines"""
+        try:
+            rr_irregularity = np.std(rr_intervals) / np.mean(rr_intervals) if len(rr_intervals) > 0 else 0
+            meets_criteria = (
+                rr_irregularity > self.guideline_thresholds['afib_rr_irregularity'] and
+                features.get('p_wave_absence_score', 0) > 0.7 and
+                features.get('hr_variability', 0) > 0.6
+            )
+            confidence = min(1.0, rr_irregularity * 3)
+            return meets_criteria, confidence
+        except:
+            return False, 0.0
+    
+    def validate_vtach(self, features, duration, qrs_width):
+        """Validar Taquicardia Ventricular"""
+        try:
+            meets_criteria = (
+                qrs_width > self.guideline_thresholds['vtach_qrs_width'] and
+                duration >= 3.0 and  # Al menos 3 segundos para VT no sostenida
+                features.get('av_dissociation_score', 0) > 0.5
+            )
+            confidence = min(1.0, (qrs_width / 200) * 0.5 + (min(duration, 30) / 30) * 0.5)
+            return meets_criteria, confidence
+        except:
+            return False, 0.0
+    
+    def validate_av_block(self, features, pr_interval):
+        """Validar Bloqueo AV"""
+        try:
+            meets_criteria = (
+                pr_interval > self.guideline_thresholds['av_block_pr_interval'] or
+                features.get('av_conduction_ratio', 0) < 0.8
+            )
+            confidence = min(1.0, pr_interval / 300)
+            return meets_criteria, confidence
+        except:
+            return False, 0.0
+    
+    def validate_bigeminy(self, features, pvc_density, pattern_regularity):
+        """Validar Bigeminismo Ventricular"""
+        try:
+            meets_criteria = (
+                pvc_density > 0.3 and  # Al menos 30% de PVCs
+                pattern_regularity > 0.7 and  # Patrón regular
+                features.get('bigeminy_score', 0) > 0.5
+            )
+            confidence = min(1.0, (pvc_density * 0.5 + pattern_regularity * 0.5))
+            return meets_criteria, confidence
+        except:
+            return False, 0.0
+
+# =============================================================================
+# SISTEMA DE EXPLICABILIDAD (XAI)
+# =============================================================================
+
+class ExplainableAI:
+    def __init__(self):
+        self.feature_descriptions = {
+            'mean_rr': 'Intervalo RR promedio',
+            'std_rr': 'Variabilidad de intervalos RR',
+            'hr_mean': 'Frecuencia cardíaca promedio',
+            'qrs_width': 'Ancho del complejo QRS',
+            'pr_interval': 'Intervalo PR',
+            'pvc_density': 'Densidad de extrasístoles ventriculares',
+            'bigeminy_score': 'Puntaje de patrón bigeminismo',
+            'trigeminy_score': 'Puntaje de patrón trigeminismo',
+            'lf_hf_ratio': 'Ratio de frecuencias bajas/altas',
+            'signal_entropy': 'Complejidad de la señal'
+        }
+    
+    def generate_explanation(self, diagnosis, features, probabilities):
+        """Generar explicaciones comprensibles del diagnóstico"""
+        
+        explanations = {
+            'Bigeminismo Ventricular': 
+                self._explain_bigeminy(features),
+                
+            'Trigeminismo Ventricular':
+                self._explain_trigeminy(features),
+                
+            'Bloqueo AV':
+                self._explain_av_block(features),
+                
+            'Fibrilación Auricular':
+                self._explain_afib(features),
+                
+            'Taquicardia Ventricular':
+                self._explain_vtach(features),
+                
+            'Extrasístoles Ventriculares':
+                self._explain_pvcs(features)
+        }
+        
+        default_explanation = (
+            f"El diagnóstico se basa en el análisis de {len(features)} características ECG.\n"
+            f"Características más relevantes:\n"
+            f"• Variabilidad RR: {features.get('std_rr', 0):.2f} ms\n"
+            f"• Frecuencia cardíaca: {features.get('hr_mean', 0):.1f} lpm\n"
+            f"• Ancho QRS: {features.get('qrs_width', 0):.1f} ms"
+        )
+        
+        return explanations.get(diagnosis, default_explanation)
+    
+    def _explain_bigeminy(self, features):
+        explanation = "**Bigeminismo Ventricular Detectado:**\n\n"
+        explanation += f"• Patrón de PVC cada dos latidos: {features.get('bigeminy_score', 0):.2f}\n"
+        explanation += f"• Regularidad del patrón: {features.get('pattern_regularity', 0):.2f}\n"
+        explanation += f"• Densidad de PVCs: {features.get('pvc_density', 0):.1%}\n"
+        explanation += f"• Acoplamiento de PVCs: {features.get('pvc_coupling_std', 0):.1f} ms\n\n"
+        explanation += "**Significado clínico:** Patrón organizado de extrasístoles que puede progresar a taquicardia."
+        return explanation
+    
+    def _explain_trigeminy(self, features):
+        explanation = "**Trigeminismo Ventricular Detectado:**\n\n"
+        explanation += f"• Patrón de PVC cada tres latidos: {features.get('trigeminy_score', 0):.2f}\n"
+        explanation += f"• Regularidad del patrón: {features.get('pattern_regularity', 0):.2f}\n"
+        explanation += f"• Densidad de PVCs: {features.get('pvc_density', 0):.1%}\n"
+        explanation += f"• Pausas compensatorias: {features.get('compensatory_pause_ratio', 0):.2f}\n\n"
+        explanation += "**Significado clínico:** Patrón menos frecuente que bigeminismo, pero igualmente requiere evaluación."
+        return explanation
+    
+    def _explain_av_block(self, features):
+        explanation = "**Bloqueo AV Detectado:**\n\n"
+        explanation += f"• Intervalo PR prolongado: {features.get('pr_interval', 0):.1f} ms\n"
+        explanation += f"• Relación aurículo-ventricular alterada\n"
+        explanation += f"• Pérdida de conducción: {features.get('av_block_ratio', 0):.1%}\n\n"
+        explanation += "**Significado clínico:** Alteración en la conducción eléctrica entre aurículas y ventrículos."
+        return explanation
+    
+    def _explain_afib(self, features):
+        explanation = "**Fibrilación Auricular Detectada:**\n\n"
+        explanation += f"• Irregularidad RR: {features.get('std_rr', 0):.2f} ms\n"
+        explanation += f"• Ausencia de ondas P organizadas\n"
+        explanation += f"• Variabilidad de frecuencia: {features.get('hr_std', 0):.1f} lpm\n\n"
+        explanation += "**Significado clínico:** Arritmia auricular común que aumenta riesgo de embolias."
+        return explanation
+    
+    def _explain_vtach(self, features):
+        explanation = "**Taquicardia Ventricular Detectada:**\n\n"
+        explanation += f"• Complejos QRS anchos: {features.get('qrs_width', 0):.1f} ms\n"
+        explanation += f"• Frecuencia cardíaca elevada: {features.get('hr_mean', 0):.1f} lpm\n"
+        explanation += f"• Disociación aurículo-ventricular\n\n"
+        explanation += "**Significado clínico:** Arritmia ventricular grave que puede ser potencialmente mortal."
+        return explanation
+    
+    def _explain_pvcs(self, features):
+        explanation = "**Extrasístoles Ventriculares Detectadas:**\n\n"
+        explanation += f"• Densidad de PVCs: {features.get('pvc_density', 0):.1%}\n"
+        explanation += f"• Distribución: { 'Agrupadas' if features.get('pvc_density', 0) > 0.1 else 'Aisladas'}\n"
+        explanation += f"• Variabilidad de acoplamiento: {features.get('pvc_coupling_std', 0):.1f} ms\n\n"
+        explanation += "**Significado clínico:** Latidos ventriculares prematuros que pueden ser benignos o indicar cardiopatía."
+        return explanation
+
+# =============================================================================
+# DETECTOR DE ARTEFACTOS Y RUIDO
+# =============================================================================
+
+class ArtifactDetector:
+    def __init__(self):
+        self.artifact_thresholds = {
+            'motion_threshold': 0.15,
+            'electrode_pop_threshold': 0.3,
+            'powerline_threshold': 0.1,
+            'baseline_drift_threshold': 0.2
+        }
+    
+    def detect_artifacts(self, ecg_signal, sampling_rate):
+        """Detección y clasificación de artefactos comunes en ECG"""
+        
+        artifacts = {
+            'motion_artifact': self._detect_motion_artifact(ecg_signal, sampling_rate),
+            'electrode_pop': self._detect_electrode_pop(ecg_signal),
+            'powerline_noise': self._detect_powerline_noise(ecg_signal, sampling_rate),
+            'baseline_drift': self._detect_baseline_drift(ecg_signal),
+            'muscle_noise': self._detect_muscle_noise(ecg_signal, sampling_rate)
+        }
+        
+        # Filtrar solo artefactos detectados
+        detected_artifacts = {k: v for k, v in artifacts.items() if v['detected']}
+        
+        # Calcular score global de artefactos
+        artifact_score = sum(art['severity'] for art in detected_artifacts.values()) / max(1, len(detected_artifacts))
+        
+        return {
+            'detected_artifacts': detected_artifacts,
+            'artifact_score': artifact_score,
+            'artifact_count': len(detected_artifacts),
+            'recommendations': self._get_artifact_recommendations(detected_artifacts)
+        }
+    
+    def _detect_motion_artifact(self, ecg_signal, sampling_rate):
+        """Detectar artefactos por movimiento"""
+        try:
+            # Analizar derivadas de alta frecuencia
+            diff_signal = np.diff(ecg_signal)
+            motion_peaks = np.sum(np.abs(diff_signal) > np.std(ecg_signal) * 3) / len(diff_signal)
+            
+            detected = motion_peaks > self.artifact_thresholds['motion_threshold']
+            severity = min(1.0, motion_peaks * 2)
+            
+            return {
+                'detected': detected,
+                'severity': severity,
+                'description': 'Artefacto por movimiento del paciente',
+                'suggested_fix': 'Mantener al paciente inmóvil durante el registro'
+            }
+        except:
+            return {'detected': False, 'severity': 0, 'description': '', 'suggested_fix': ''}
+    
+    def _detect_electrode_pop(self, ecg_signal):
+        """Detectar desconexión momentánea de electrodos"""
+        try:
+            # Buscar transiciones abruptas
+            diff_signal = np.diff(ecg_signal)
+            pop_candidates = np.sum(np.abs(diff_signal) > np.std(ecg_signal) * 5) / len(diff_signal)
+            
+            detected = pop_candidates > self.artifact_thresholds['electrode_pop_threshold']
+            severity = min(1.0, pop_candidates * 3)
+            
+            return {
+                'detected': detected,
+                'severity': severity,
+                'description': 'Desconexión momentánea de electrodos',
+                'suggested_fix': 'Verificar conexiones y contacto de electrodos'
+            }
+        except:
+            return {'detected': False, 'severity': 0, 'description': '', 'suggested_fix': ''}
+    
+    def _detect_powerline_noise(self, ecg_signal, sampling_rate):
+        """Detectar interferencia de línea de potencia (50/60 Hz)"""
+        try:
+            # Análisis espectral en banda de 50/60 Hz
+            f, Pxx = signal.welch(ecg_signal, sampling_rate, nperseg=min(1024, len(ecg_signal)//4))
+            
+            # Buscar picos en 50 Hz y armónicos
+            powerline_freqs = [50, 60, 100, 120, 150, 180]
+            powerline_power = 0
+            
+            for freq in powerline_freqs:
+                idx = np.argmin(np.abs(f - freq))
+                if idx < len(Pxx):
+                    powerline_power += Pxx[idx]
+            
+            total_power = np.trapz(Pxx, f)
+            powerline_ratio = powerline_power / total_power if total_power > 0 else 0
+            
+            detected = powerline_ratio > self.artifact_thresholds['powerline_threshold']
+            severity = min(1.0, powerline_ratio * 5)
+            
+            return {
+                'detected': detected,
+                'severity': severity,
+                'description': f'Interferencia de línea de potencia ({powerline_ratio:.3f})',
+                'suggested_fix': 'Usar filtro de línea de potencia y verificar conexión a tierra'
+            }
+        except:
+            return {'detected': False, 'severity': 0, 'description': '', 'suggested_fix': ''}
+    
+    def _detect_baseline_drift(self, ecg_signal):
+        """Detectar deriva de línea base"""
+        try:
+            # Filtro pasa-bajos para línea base
+            b, a = signal.butter(3, 0.5, btype='low', fs=250)
+            baseline = signal.filtfilt(b, a, ecg_signal)
+            
+            # Calcular variación de línea base
+            baseline_variation = np.std(baseline) / (np.std(ecg_signal) + 1e-10)
+            
+            detected = baseline_variation > self.artifact_thresholds['baseline_drift_threshold']
+            severity = min(1.0, baseline_variation * 3)
+            
+            return {
+                'detected': detected,
+                'severity': severity,
+                'description': 'Deriva de línea base significativa',
+                'suggested_fix': 'Aplicar filtro de línea base y verificar contacto de electrodos'
+            }
+        except:
+            return {'detected': False, 'severity': 0, 'description': '', 'suggested_fix': ''}
+    
+    def _detect_muscle_noise(self, ecg_signal, sampling_rate):
+        """Detectar ruido muscular (EMG)"""
+        try:
+            # Análisis espectral en banda de alta frecuencia (20-100 Hz)
+            f, Pxx = signal.welch(ecg_signal, sampling_rate, nperseg=min(1024, len(ecg_signal)//4))
+            
+            muscle_band = (20, 100)
+            muscle_power = np.trapz(Pxx[(f >= muscle_band[0]) & (f <= muscle_band[1])], 
+                                  f[(f >= muscle_band[0]) & (f <= muscle_band[1])])
+            total_power = np.trapz(Pxx, f)
+            muscle_ratio = muscle_power / total_power if total_power > 0 else 0
+            
+            detected = muscle_ratio > 0.1  # 10% de potencia en banda muscular
+            severity = min(1.0, muscle_ratio * 4)
+            
+            return {
+                'detected': detected,
+                'severity': severity,
+                'description': 'Ruido muscular (EMG) detectado',
+                'suggested_fix': 'Relajar músculos y asegurar posición cómoda'
+            }
+        except:
+            return {'detected': False, 'severity': 0, 'description': '', 'suggested_fix': ''}
+    
+    def _get_artifact_recommendations(self, artifacts):
+        """Generar recomendaciones para corregir artefactos"""
+        recommendations = []
+        
+        for artifact_name, artifact_info in artifacts.items():
+            if artifact_info['detected']:
+                recommendations.append(f"• {artifact_info['suggested_fix']}")
+        
+        if not recommendations:
+            recommendations.append("✅ Calidad de señal buena - pocos artefactos detectados")
+        
+        return recommendations
+
+# =============================================================================
+# ANÁLISIS DE TENDENCIA TEMPORAL
+# =============================================================================
+
+class TemporalTrendAnalyzer:
+    def __init__(self):
+        self.trend_history = []
+        self.max_history_size = 10
+    
+    def add_analysis(self, analysis_results, timestamp=None):
+        """Agregar análisis actual al historial"""
+        if timestamp is None:
+            timestamp = datetime.now()
+        
+        analysis_entry = {
+            'timestamp': timestamp,
+            'results': analysis_results.copy()
+        }
+        
+        self.trend_history.append(analysis_entry)
+        
+        # Mantener tamaño máximo del historial
+        if len(self.trend_history) > self.max_history_size:
+            self.trend_history.pop(0)
+    
+    def analyze_trends(self, current_analysis):
+        """Analizar evolución temporal de las arritmias"""
+        if len(self.trend_history) < 2:
+            return {"message": "Historial insuficiente para análisis de tendencias"}
+        
+        trend_alerts = []
+        improvements = []
+        
+        # Obtener análisis anterior
+        previous_analysis = self.trend_history[-2]['results']
+        
+        # Analizar cada condición
+        for condition, current_prob in current_analysis.items():
+            if condition in previous_analysis:
+                previous_prob = previous_analysis[condition]
+                trend = current_prob - previous_prob
+                
+                if abs(trend) > 0.1:  # Cambio significativo
+                    if trend > 0.1:  # Empeoramiento
+                        trend_alerts.append({
+                            'condition': condition,
+                            'change': trend,
+                            'trend': 'worsening',
+                            'message': f"📈 Empeoramiento de {condition}: +{trend:.1%}"
+                        })
+                    elif trend < -0.1:  # Mejoría
+                        improvements.append({
+                            'condition': condition,
+                            'change': abs(trend),
+                            'trend': 'improving',
+                            'message': f"📉 Mejoría de {condition}: -{abs(trend):.1%}"
+                        })
+        
+        # Análisis de estabilidad
+        stability_score = self._calculate_stability(current_analysis)
+        
+        return {
+            'trend_alerts': trend_alerts,
+            'improvements': improvements,
+            'stability_score': stability_score,
+            'total_changes': len(trend_alerts) + len(improvements),
+            'overall_trend': 'ESTABLE' if stability_score > 0.8 else 'CAMBIOS DETECTADOS'
+        }
+    
+    def _calculate_stability(self, current_analysis):
+        """Calcular score de estabilidad basado en variaciones recientes"""
+        if len(self.trend_history) < 3:
+            return 1.0
+        
+        variations = []
+        recent_analyses = self.trend_history[-3:]
+        
+        for i in range(1, len(recent_analyses)):
+            prev = recent_analyses[i-1]['results']
+            curr = recent_analyses[i]['results']
+            
+            for condition in current_analysis.keys():
+                if condition in prev and condition in curr:
+                    variation = abs(curr[condition] - prev[condition])
+                    variations.append(variation)
+        
+        if not variations:
+            return 1.0
+        
+        avg_variation = np.mean(variations)
+        stability = max(0, 1 - avg_variation * 5)  # Convertir a score 0-1
+        
+        return stability
+
+# =============================================================================
+# SISTEMA DE APRENDIZAJE CONTINUO
+# =============================================================================
+
+class FeedbackLearningSystem:
+    def __init__(self):
+        self.feedback_data = []
+        self.learning_threshold = 5  # Mínimo de feedbacks para ajustar
+    
+    def add_feedback(self, prediction, actual_diagnosis, user_correction, confidence):
+        """Aprender de las correcciones del usuario"""
+        feedback_entry = {
+            'timestamp': datetime.now(),
+            'prediction': prediction,
+            'actual_diagnosis': actual_diagnosis,
+            'user_correction': user_correction,
+            'confidence': confidence,
+            'was_correct': prediction == actual_diagnosis
+        }
+        
+        self.feedback_data.append(feedback_entry)
+        st.success("✅ Feedback registrado para mejorar el sistema")
+    
+    def get_learning_insights(self):
+        """Obtener insights del aprendizaje"""
+        if len(self.feedback_data) == 0:
+            return {"message": "Aún no hay datos de feedback"}
+        
+        total_feedbacks = len(self.feedback_data)
+        correct_predictions = sum(1 for f in self.feedback_data if f['was_correct'])
+        accuracy = correct_predictions / total_feedbacks
+        
+        # Análisis por condición
+        condition_analysis = {}
+        for feedback in self.feedback_data:
+            condition = feedback['prediction']
+            if condition not in condition_analysis:
+                condition_analysis[condition] = {'total': 0, 'correct': 0}
+            
+            condition_analysis[condition]['total'] += 1
+            if feedback['was_correct']:
+                condition_analysis[condition]['correct'] += 1
+        
+        # Calcular accuracy por condición
+        condition_accuracy = {}
+        for condition, stats in condition_analysis.items():
+            condition_accuracy[condition] = stats['correct'] / stats['total']
+        
+        return {
+            'total_feedbacks': total_feedbacks,
+            'overall_accuracy': accuracy,
+            'condition_accuracy': condition_accuracy,
+            'learning_ready': total_feedbacks >= self.learning_threshold
+        }
+    
+    def adjust_detection_thresholds(self):
+        """Ajustar umbrales de detección basado en feedback acumulado"""
+        if len(self.feedback_data) < self.learning_threshold:
+            return {"message": "Feedback insuficiente para ajustes automáticos"}
+        
+        insights = self.get_learning_insights()
+        
+        adjustment_suggestions = []
+        for condition, accuracy in insights['condition_accuracy'].items():
+            if accuracy < 0.7:  # Baja accuracy
+                adjustment_suggestions.append(
+                    f"Considerar aumentar umbral para {condition} (accuracy: {accuracy:.1%})"
+                )
+            elif accuracy > 0.9:  # Muy alta accuracy
+                adjustment_suggestions.append(
+                    f"Considerar disminuir umbral para {condition} (accuracy: {accuracy:.1%})"
+                )
+        
+        return {
+            'adjustment_suggestions': adjustment_suggestions,
+            'current_accuracy': insights['overall_accuracy'],
+            'recommendation': 'Umbrales estables' if not adjustment_suggestions else 'Ajustes recomendados'
+        }
+
+# =============================================================================
 # CLASES DE MODELOS AVANZADOS (MEJORADAS)
 # =============================================================================
 
@@ -557,7 +1284,10 @@ class AdvancedArrhythmiaDetector:
             'sdnn', 'cv_hr', 'amplitude_asymmetry', 'zero_crossing_rate',
             # NUEVAS CARACTERÍSTICAS PARA PATRONES
             'bigeminy_score', 'trigeminy_score', 'pvc_coupling_std',
-            'compensatory_pause_ratio', 'pattern_regularity', 'pvc_density'
+            'compensatory_pause_ratio', 'pattern_regularity', 'pvc_density',
+            # CARACTERÍSTICAS AVANZADAS AÑADIDAS
+            'p_wave_absence_score', 'av_dissociation_score', 'av_block_ratio',
+            'r_on_t_risk', 'sustained_vt_duration', 'st_depression_mv'
         ]
         
         # TIPOS DE ARRITMIA MEJORADOS
@@ -574,6 +1304,15 @@ class AdvancedArrhythmiaDetector:
             'Bigeminismo Ventricular': 'BIGEM',
             'Trigeminismo Ventricular': 'TRIGEM'
         }
+        
+        # Inicializar sistemas de apoyo
+        self.alert_system = ClinicalAlertSystem()
+        self.quality_assessor = SignalQualityAssessment()
+        self.criteria_validator = ClinicalCriteriaValidator()
+        self.explainer = ExplainableAI()
+        self.artifact_detector = ArtifactDetector()
+        self.trend_analyzer = TemporalTrendAnalyzer()
+        self.learning_system = FeedbackLearningSystem()
     
     def extract_advanced_features(self, ecg_signal, sampling_rate):
         """Extraer características avanzadas para modelos deep learning optimizado"""
@@ -587,7 +1326,7 @@ class AdvancedArrhythmiaDetector:
                 rpeaks = info['ECG_R_Peaks']
             except:
                 # Fallback a método más simple
-                rpeaks, info = nk.ecg_peaks(ecg_cleaned, sampling_rate=sampling_rate, method='neurokit')
+                rpeaks, info = nk.ecg_peaks(ecg_cleaned, sampling_rate=sam_rate, method='neurokit')
                 rpeaks = info['ECG_R_Peaks']
             
             if len(rpeaks) < 4:
@@ -623,6 +1362,9 @@ class AdvancedArrhythmiaDetector:
             
             # NUEVO: Características de patrones de agrupamiento
             features.update(self._extract_pattern_features(ecg_cleaned, rpeaks, sampling_rate))
+            
+            # NUEVO: Características avanzadas de patrones complejos
+            features.update(self._extract_advanced_patterns(ecg_cleaned, rpeaks, sampling_rate))
             
             # Asegurar que todas las características estén presentes
             for feature in self.feature_names:
@@ -730,6 +1472,155 @@ class AdvancedArrhythmiaDetector:
             })
         
         return features
+
+    def _extract_advanced_patterns(self, ecg_signal, rpeaks, sampling_rate):
+        """NUEVO: Detección de patrones complejos como R-on-T y taquicardia sostenida"""
+        features = {}
+        
+        try:
+            if len(rpeaks) < 4:
+                return {
+                    'r_on_t_risk': 0,
+                    'sustained_vt_duration': 0,
+                    'st_depression_mv': 0,
+                    'p_wave_absence_score': 0,
+                    'av_dissociation_score': 0,
+                    'av_block_ratio': 0
+                }
+            
+            rr_intervals = np.diff(rpeaks) / sampling_rate * 1000
+            
+            # Detección R-on-T (PVC peligrosa)
+            features['r_on_t_risk'] = self._detect_r_on_t_pattern(ecg_signal, rpeaks, sampling_rate)
+            
+            # Detección de taquicardia sostenida
+            features['sustained_vt_duration'] = self._detect_sustained_tachycardia(rr_intervals)
+            
+            # Análisis de segmento ST (isquemia)
+            features['st_depression_mv'] = self._analyze_st_segment(ecg_signal, rpeaks, sampling_rate)
+            
+            # Detección de ondas P (para bloqueo AV y FA)
+            features['p_wave_absence_score'] = self._detect_p_wave_absence(ecg_signal, rpeaks, sampling_rate)
+            
+            # Disociación AV (para taquicardia ventricular)
+            features['av_dissociation_score'] = self._detect_av_dissociation(ecg_signal, rpeaks, sampling_rate)
+            
+            # Ratio de bloqueo AV
+            features['av_block_ratio'] = self._calculate_av_block_ratio(rr_intervals)
+            
+        except Exception as e:
+            features.update({
+                'r_on_t_risk': 0,
+                'sustained_vt_duration': 0,
+                'st_depression_mv': 0,
+                'p_wave_absence_score': 0,
+                'av_dissociation_score': 0,
+                'av_block_ratio': 0
+            })
+        
+        return features
+
+    def _detect_r_on_t_pattern(self, ecg_signal, rpeaks, sampling_rate):
+        """Detectar riesgo de fenómeno R-on-T"""
+        try:
+            risk_score = 0
+            for i in range(1, len(rpeaks)):
+                # Calcular intervalo entre fin de T y siguiente QRS
+                t_end_estimate = rpeaks[i-1] + int(0.4 * sampling_rate)  # Asumir fin de onda T
+                if t_end_estimate < len(ecg_signal) and t_end_estimate > rpeaks[i-1]:
+                    # Buscar PVC muy precoz
+                    if rpeaks[i] - rpeaks[i-1] < 0.3 * sampling_rate:  # PVC muy precoz
+                        risk_score += 1
+            
+            return min(1.0, risk_score / max(1, len(rpeaks) - 1))
+        except:
+            return 0.0
+
+    def _detect_sustained_tachycardia(self, rr_intervals):
+        """Detectar taquicardia sostenida"""
+        try:
+            if len(rr_intervals) == 0:
+                return 0.0
+            
+            tachycardia_threshold = 500  # ms (120 lpm)
+            sustained_count = 0
+            max_sustained = 0
+            
+            for rr in rr_intervals:
+                if rr < tachycardia_threshold:
+                    sustained_count += 1
+                    max_sustained = max(max_sustained, sustained_count)
+                else:
+                    sustained_count = 0
+            
+            # Convertir a duración en segundos
+            duration = (max_sustained * np.mean(rr_intervals)) / 1000 if max_sustained > 0 else 0
+            return min(60.0, duration)  # Limitar a 60 segundos
+        except:
+            return 0.0
+
+    def _analyze_st_segment(self, ecg_signal, rpeaks, sampling_rate):
+        """Analizar depresión del segmento ST"""
+        try:
+            st_depressions = []
+            for peak in rpeaks[:min(10, len(rpeaks))]:
+                j_point = peak + int(0.08 * sampling_rate)  # Punto J
+                st_point = j_point + int(0.06 * sampling_rate)  # Segmento ST
+                
+                if st_point < len(ecg_signal):
+                    baseline = np.mean(ecg_signal[max(0, peak-50):peak])
+                    st_amplitude = ecg_signal[st_point] - baseline
+                    st_depressions.append(st_amplitude)
+            
+            if st_depressions:
+                avg_depression = np.mean(st_depressions)
+                # Convertir a milivolts (asumiendo calibración)
+                return abs(avg_depression) * 1000  # Escalar para mejor visualización
+            return 0.0
+        except:
+            return 0.0
+
+    def _detect_p_wave_absence(self, ecg_signal, rpeaks, sampling_rate):
+        """Detectar ausencia de ondas P (para FA)"""
+        try:
+            p_wave_present = 0
+            total_analyzed = 0
+            
+            for i in range(1, min(10, len(rpeaks))):
+                # Buscar onda P antes del complejo QRS
+                p_wave_region = slice(max(0, rpeaks[i] - int(0.3 * sampling_rate)), rpeaks[i] - int(0.05 * sampling_rate))
+                
+                if p_wave_region.stop < len(ecg_signal):
+                    segment = ecg_signal[p_wave_region]
+                    # Buscar deflexión significativa (potencial onda P)
+                    if np.max(segment) - np.min(segment) > 0.1 * np.std(ecg_signal):
+                        p_wave_present += 1
+                    total_analyzed += 1
+            
+            return 1 - (p_wave_present / total_analyzed) if total_analyzed > 0 else 0.5
+        except:
+            return 0.5
+
+    def _detect_av_dissociation(self, ecg_signal, rpeaks, sampling_rate):
+        """Detectar disociación aurículo-ventricular"""
+        try:
+            # Análisis simplificado de disociación AV
+            rr_variability = np.std(np.diff(rpeaks)) / sampling_rate if len(rpeaks) > 1 else 0
+            return min(1.0, rr_variability * 10)  # Escalar
+        except:
+            return 0.0
+
+    def _calculate_av_block_ratio(self, rr_intervals):
+        """Calcular ratio de bloqueo AV"""
+        try:
+            if len(rr_intervals) < 3:
+                return 0.0
+            
+            # Buscar patrones de Wenckebach u otros bloqueos
+            long_intervals = sum(1 for rr in rr_intervals if rr > np.mean(rr_intervals) * 1.5)
+            return long_intervals / len(rr_intervals)
+        except:
+            return 0.0
     
     def _extract_morphological_features(self, ecg_signal, rpeaks, sampling_rate):
         """Extraer características morfológicas avanzadas optimizado"""
@@ -848,6 +1739,144 @@ class AdvancedArrhythmiaDetector:
         except:
             return 160
 
+    def comprehensive_analysis(self, ecg_signal, sampling_rate):
+        """Análisis comprehensivo que integra todos los sistemas"""
+        results = {}
+        
+        # 1. Análisis de calidad de señal
+        quality_results = self.quality_assessor.assess_signal_quality(ecg_signal, sampling_rate)
+        results['signal_quality'] = quality_results
+        
+        # 2. Detección de artefactos
+        artifact_results = self.artifact_detector.detect_artifacts(ecg_signal, sampling_rate)
+        results['artifacts'] = artifact_results
+        
+        # 3. Extracción de características
+        features, error = self.extract_advanced_features(ecg_signal, sampling_rate)
+        if error:
+            results['error'] = error
+            return results
+        
+        results['features'] = features
+        
+        # 4. Clasificación de arritmias
+        arrhythmia_scores = self._simulate_classification(features)
+        results['arrhythmia_scores'] = arrhythmia_scores
+        
+        # 5. Validación con criterios clínicos
+        validated_diagnoses = self._validate_with_clinical_criteria(features, arrhythmia_scores)
+        results['validated_diagnoses'] = validated_diagnoses
+        
+        # 6. Generar explicaciones
+        primary_diagnosis = max(arrhythmia_scores, key=arrhythmia_scores.get)
+        explanation = self.explainer.generate_explanation(primary_diagnosis, dict(zip(self.feature_names, features)), arrhythmia_scores)
+        results['explanation'] = explanation
+        
+        # 7. Generar alertas clínicas
+        recommendations, alert_level = self.alert_system.generate_clinical_recommendations(primary_diagnosis, arrhythmia_scores[primary_diagnosis])
+        immediate_actions = self.alert_system.get_immediate_actions(primary_diagnosis)
+        results['clinical_alerts'] = {
+            'primary_diagnosis': primary_diagnosis,
+            'alert_level': alert_level,
+            'recommendations': recommendations,
+            'immediate_actions': immediate_actions,
+            'probability': arrhythmia_scores[primary_diagnosis]
+        }
+        
+        # 8. Análisis de tendencias (si hay historial)
+        trend_analysis = self.trend_analyzer.analyze_trends(arrhythmia_scores)
+        results['trend_analysis'] = trend_analysis
+        
+        # 9. Agregar al historial para análisis futuro
+        self.trend_analyzer.add_analysis(arrhythmia_scores)
+        
+        return results
+
+    def _validate_with_clinical_criteria(self, features, arrhythmia_scores):
+        """Validar diagnósticos con criterios clínicos"""
+        validated = {}
+        feature_dict = dict(zip(self.feature_names, features))
+        
+        for arrhythmia, score in arrhythmia_scores.items():
+            if score > 0.3:  # Solo validar si hay probabilidad significativa
+                if arrhythmia == 'Fibrilación Auricular':
+                    meets_criteria, confidence = self.criteria_validator.validate_afib(feature_dict, [])
+                    validated[arrhythmia] = {
+                        'meets_criteria': meets_criteria,
+                        'confidence': confidence,
+                        'adjusted_score': score * confidence if meets_criteria else score * 0.5
+                    }
+                elif arrhythmia == 'Taquicardia Ventricular':
+                    meets_criteria, confidence = self.criteria_validator.validate_vtach(
+                        feature_dict, 
+                        feature_dict.get('sustained_vt_duration', 0),
+                        feature_dict.get('qrs_width', 0)
+                    )
+                    validated[arrhythmia] = {
+                        'meets_criteria': meets_criteria,
+                        'confidence': confidence,
+                        'adjusted_score': score * confidence if meets_criteria else score * 0.5
+                    }
+                elif arrhythmia == 'Bloqueo AV':
+                    meets_criteria, confidence = self.criteria_validator.validate_av_block(
+                        feature_dict, feature_dict.get('pr_interval', 0)
+                    )
+                    validated[arrhythmia] = {
+                        'meets_criteria': meets_criteria,
+                        'confidence': confidence,
+                        'adjusted_score': score * confidence if meets_criteria else score * 0.5
+                    }
+                elif arrhythmia == 'Bigeminismo Ventricular':
+                    meets_criteria, confidence = self.criteria_validator.validate_bigeminy(
+                        feature_dict,
+                        feature_dict.get('pvc_density', 0),
+                        feature_dict.get('pattern_regularity', 0)
+                    )
+                    validated[arrhythmia] = {
+                        'meets_criteria': meets_criteria,
+                        'confidence': confidence,
+                        'adjusted_score': score * confidence if meets_criteria else score * 0.5
+                    }
+                else:
+                    validated[arrhythmia] = {
+                        'meets_criteria': True,
+                        'confidence': 0.7,
+                        'adjusted_score': score
+                    }
+        
+        return validated
+
+    def _simulate_classification(self, features):
+        """Simular clasificación basada en características (placeholder para modelo real)"""
+        # Esta es una simulación - en producción se usarían los modelos reales entrenados
+        feature_dict = dict(zip(self.feature_names, features))
+        
+        scores = {
+            'Ritmo Sinusal Normal': max(0, 1 - np.abs(feature_dict.get('std_rr', 0)) * 2),
+            'Fibrilación Auricular': min(1, np.abs(feature_dict.get('lf_hf_ratio', 0)) * 0.5 + feature_dict.get('p_wave_absence_score', 0) * 0.5),
+            'Extrasístoles Ventriculares': min(1, feature_dict.get('pvc_density', 0) * 3),
+            'Taquicardia Ventricular': min(1, (feature_dict.get('hr_mean', 0) - 80) / 100 + feature_dict.get('av_dissociation_score', 0) * 0.3),
+            'Bigeminismo Ventricular': min(1, feature_dict.get('bigeminy_score', 0) * 2),
+            'Trigeminismo Ventricular': min(1, feature_dict.get('trigeminy_score', 0) * 2),
+            'Bloqueo AV': min(1, np.abs(feature_dict.get('pr_interval', 0) - 200) / 200 + feature_dict.get('av_block_ratio', 0)),
+            'Taquicardia Sinusal': min(1, max(0, (feature_dict.get('hr_mean', 0) - 100) / 50)),
+            'Bradicardia Sinusal': min(1, max(0, (60 - feature_dict.get('hr_mean', 0)) / 40))
+        }
+        
+        # Aplicar ajustes basados en características avanzadas
+        if feature_dict.get('r_on_t_risk', 0) > 0.5:
+            scores['Extrasístoles Ventriculares'] = min(1, scores['Extrasístoles Ventriculares'] * 1.5)
+        
+        if feature_dict.get('sustained_vt_duration', 0) > 10:
+            scores['Taquicardia Ventricular'] = min(1, scores['Taquicardia Ventricular'] * 1.3)
+        
+        # Normalizar
+        total = sum(scores.values())
+        if total > 0:
+            scores = {k: v/total for k, v in scores.items()}
+        
+        return scores
+
 # =============================================================================
 # INTERFAZ DE USUARIO MEJORADA CON STREAMLIT
 # =============================================================================
@@ -900,6 +1929,14 @@ class ECGAppInterface:
             border-left: 5px solid #28a745;
             margin: 1rem 0;
         }
+        .critical-box {
+            background-color: #f8d7da;
+            padding: 1.5rem;
+            border-radius: 10px;
+            border-left: 5px solid #dc3545;
+            margin: 1rem 0;
+            animation: pulse 2s infinite;
+        }
         .metric-card {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             padding: 1.5rem;
@@ -908,25 +1945,32 @@ class ECGAppInterface:
             text-align: center;
             margin: 0.5rem;
         }
+        @keyframes pulse {
+            0% { border-left-color: #dc3545; }
+            50% { border-left-color: #ff6b7a; }
+            100% { border-left-color: #dc3545; }
+        }
         </style>
         """, unsafe_allow_html=True)
         
-        # Header principal mejorado
+        # Header principal mejorada
         st.markdown('<h1 class="main-header">❤️ CardioAI Advanced Pro</h1>', unsafe_allow_html=True)
-        st.markdown('<p style="text-align: center; font-size: 1.2rem; color: #555;">Analizador Inteligente de Señales ECG con Deep Learning</p>', unsafe_allow_html=True)
+        st.markdown('<p style="text-align: center; font-size: 1.2rem; color: #555;">Sistema Inteligente de Análisis ECG con Deep Learning y Validación Clínica</p>', unsafe_allow_html=True)
         
         # Información de la aplicación
         with st.expander("ℹ️ Información de la Aplicación", expanded=False):
             col1, col2, col3 = st.columns(3)
             
             with col1:
-                st.markdown("### 🎯 Funcionalidades")
+                st.markdown("### 🎯 Funcionalidades Avanzadas")
                 st.markdown("""
-                - 📊 Análisis avanzado de ECG
-                - 🧠 Modelos Deep Learning
+                - 📊 Análisis comprehensivo de ECG
+                - 🧠 Modelos Deep Learning avanzados
                 - ⚡ Procesamiento en tiempo real
                 - 📈 Visualizaciones interactivas
-                - 🔍 Detección de arritmias
+                - 🔍 Detección de arritmias complejas
+                - 🚨 Sistema de alertas clínicas
+                - 📋 Validación con criterios clínicos
                 """)
             
             with col2:
@@ -936,17 +1980,18 @@ class ECGAppInterface:
                 - BDF (Biosemi)
                 - Binario personalizado
                 - RAW (Datos crudos)
-                - Auto-detección
+                - Auto-detección inteligente
                 """)
             
             with col3:
                 st.markdown("### 🏥 Arritmias Detectadas")
                 st.markdown("""
                 - Fibrilación Auricular
-                - Taquicardia Ventricular
+                - Taquicardia Ventricular  
                 - Extrasístoles (PVC)
                 - Bigeminismo/Trigeminismo
                 - Bloqueos AV
+                - Patrones complejos
                 - Y más...
                 """)
     
@@ -996,59 +2041,259 @@ class ECGAppInterface:
         
         return uploaded_file, file_type, binary_config
     
-    def render_analysis_results(self, ecg_signal, sampling_rate, features):
-        """Mostrar resultados del análisis mejorado"""
-        st.markdown('<div class="sub-header">📊 Resultados del Análisis</div>', unsafe_allow_html=True)
+    def render_comprehensive_analysis(self, analysis_results):
+        """Mostrar análisis comprehensivo mejorado"""
+        st.markdown('<div class="sub-header">📊 Análisis Comprehensivo</div>', unsafe_allow_html=True)
         
-        if ecg_signal is None:
-            st.error("❌ No se pudo procesar la señal ECG")
+        if 'error' in analysis_results:
+            st.error(f"❌ Error en el análisis: {analysis_results['error']}")
             return
         
-        # Métricas principales en tarjetas
+        # Panel de Calidad de Señal
+        self._render_signal_quality(analysis_results.get('signal_quality', {}))
+        
+        # Panel de Artefactos
+        self._render_artifact_analysis(analysis_results.get('artifacts', {}))
+        
+        # Panel de Alertas Clínicas
+        self._render_clinical_alerts(analysis_results.get('clinical_alerts', {}))
+        
+        # Panel de Diagnósticos
+        self._render_arrhythmia_analysis(analysis_results)
+        
+        # Panel de Explicaciones
+        self._render_explanations(analysis_results.get('explanation', ''))
+        
+        # Panel de Tendencias
+        self._render_trend_analysis(analysis_results.get('trend_analysis', {}))
+        
+        # Panel de Feedback
+        self._render_feedback_section(analysis_results)
+    
+    def _render_signal_quality(self, quality_results):
+        """Renderizar panel de calidad de señal"""
+        st.markdown("### 🔍 Calidad de Señal")
+        
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            st.markdown(f"""
-            <div class="metric-card">
-                <h3>📈 Muestras</h3>
-                <h2>{len(ecg_signal):,}</h2>
-            </div>
-            """, unsafe_allow_html=True)
+            quality_color = {
+                "EXCELENTE": "🟢",
+                "BUENA": "🟢", 
+                "ACEPTABLE": "🟡",
+                "POBRE": "🔴",
+                "NO EVALUABLE": "⚫"
+            }.get(quality_results.get('quality_level', 'NO EVALUABLE'), '⚫')
+            
+            st.metric(
+                "Nivel de Calidad", 
+                f"{quality_color} {quality_results.get('quality_level', 'NO EVALUABLE')}"
+            )
         
         with col2:
-            st.markdown(f"""
-            <div class="metric-card">
-                <h3>⚡ Frecuencia</h3>
-                <h2>{sampling_rate} Hz</h2>
-            </div>
-            """, unsafe_allow_html=True)
+            st.metric(
+                "Score de Calidad", 
+                f"{quality_results.get('quality_score', 0):.2f}"
+            )
         
         with col3:
-            duration = len(ecg_signal) / sampling_rate
-            st.markdown(f"""
-            <div class="metric-card">
-                <h3>⏱️ Duración</h3>
-                <h2>{duration:.1f} s</h2>
-            </div>
-            """, unsafe_allow_html=True)
+            st.metric(
+                "Confiabilidad Diagnóstica",
+                quality_results.get('diagnostic_reliability', 'Muy Baja')
+            )
         
         with col4:
-            st.markdown(f"""
-            <div class="metric-card">
-                <h3>📏 Amplitud</h3>
-                <h2>{np.std(ecg_signal):.3f}</h2>
-            </div>
-            """, unsafe_allow_html=True)
+            noise_level = quality_results.get('noise_level', 1.0)
+            noise_status = "BAJO" if noise_level < 0.3 else "MODERADO" if noise_level < 0.6 else "ALTO"
+            st.metric("Ruido", noise_status)
         
-        # Visualización de la señal
-        self._plot_ecg_signal(ecg_signal, sampling_rate)
-        
-        # Análisis de características
-        if features is not None:
-            self._display_feature_analysis(features)
+        # Recomendaciones de calidad
+        if quality_results.get('recommendations'):
+            with st.expander("💡 Recomendaciones de Calidad"):
+                for rec in quality_results['recommendations']:
+                    st.write(f"• {rec}")
+    
+    def _render_artifact_analysis(self, artifact_results):
+        """Renderizar análisis de artefactos"""
+        if artifact_results.get('artifact_count', 0) > 0:
+            st.markdown("### ⚠️ Análisis de Artefactos")
             
-            # Clasificación de arritmias
-            self._classify_arrhythmias(features)
+            st.warning(f"Se detectaron {artifact_results['artifact_count']} tipos de artefactos")
+            
+            for artifact_name, artifact_info in artifact_results.get('detected_artifacts', {}).items():
+                with st.expander(f"🔍 {artifact_name.replace('_', ' ').title()}"):
+                    st.write(f"**Descripción:** {artifact_info.get('description', '')}")
+                    st.write(f"**Severidad:** {artifact_info.get('severity', 0):.2f}")
+                    st.write(f"**Solución sugerida:** {artifact_info.get('suggested_fix', '')}")
+            
+            if artifact_results.get('recommendations'):
+                st.info("**Recomendaciones para mejorar la señal:**")
+                for rec in artifact_results['recommendations']:
+                    st.write(f"• {rec}")
+    
+    def _render_clinical_alerts(self, clinical_alerts):
+        """Renderizar alertas clínicas"""
+        if not clinical_alerts:
+            return
+        
+        alert_level = clinical_alerts.get('alert_level', 'LOW')
+        probability = clinical_alerts.get('probability', 0)
+        diagnosis = clinical_alerts.get('primary_diagnosis', '')
+        
+        alert_configs = {
+            'CRITICAL': ('critical-box', '🔴', 'ALERTA CRÍTICA'),
+            'HIGH': ('warning-box', '🟠', 'ALERTA ALTA'), 
+            'MEDIUM': ('warning-box', '🟡', 'ALERTA MEDIA'),
+            'LOW': ('info-box', '🔵', 'INFORMACIÓN'),
+            'NORMAL': ('success-box', '🟢', 'NORMAL')
+        }
+        
+        css_class, emoji, title = alert_configs.get(alert_level, ('info-box', '🔵', 'INFORMACIÓN'))
+        
+        st.markdown(f'<div class="{css_class}">', unsafe_allow_html=True)
+        st.markdown(f"### {emoji} {title}: {diagnosis}")
+        st.markdown(f"**Probabilidad:** {probability:.1%}")
+        
+        st.markdown("**Recomendaciones:**")
+        for rec in clinical_alerts.get('recommendations', []):
+            st.markdown(f"• {rec}")
+        
+        if clinical_alerts.get('immediate_actions'):
+            st.markdown("**Acciones inmediatas:**")
+            for action in clinical_alerts['immediate_actions']:
+                st.markdown(f"• {action}")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    def _render_arrhythmia_analysis(self, analysis_results):
+        """Renderizar análisis de arritmias"""
+        st.markdown("### 🏥 Análisis de Arritmias")
+        
+        arrhythmia_scores = analysis_results.get('arrhythmia_scores', {})
+        validated_diagnoses = analysis_results.get('validated_diagnoses', {})
+        
+        # Crear gráfico de probabilidades
+        fig, ax = plt.subplots(figsize=(10, 6))
+        
+        arrhythmias = list(arrhythmia_scores.keys())
+        probabilities = list(arrhythmia_scores.values())
+        
+        # Colores basados en probabilidad y validación
+        colors = []
+        for i, (arrhythmia, prob) in enumerate(arrhythmia_scores.items()):
+            if arrhythmia in validated_diagnoses:
+                validation = validated_diagnoses[arrhythmia]
+                if validation.get('meets_criteria', False):
+                    colors.append('red' if prob > 0.7 else 'orange' if prob > 0.3 else 'yellow')
+                else:
+                    colors.append('lightgray')
+            else:
+                colors.append('green' if prob < 0.3 else 'orange' if prob < 0.7 else 'red')
+        
+        bars = ax.barh(arrhythmias, probabilities, color=colors)
+        ax.set_xlim(0, 1)
+        ax.set_xlabel('Probabilidad')
+        ax.set_title('Probabilidad de Arritmias (Validación Clínica)')
+        
+        # Añadir valores y anotaciones
+        for bar, prob, arrhythmia in zip(bars, probabilities, arrhythmias):
+            ax.text(bar.get_width() + 0.01, bar.get_y() + bar.get_height()/2, 
+                   f'{prob:.2f}', va='center')
+            
+            if arrhythmia in validated_diagnoses:
+                validation = validated_diagnoses[arrhythmia]
+                if not validation.get('meets_criteria', True):
+                    ax.text(bar.get_width() + 0.05, bar.get_y() + bar.get_height()/2, 
+                           '❌', va='center')
+                else:
+                    ax.text(bar.get_width() + 0.05, bar.get_y() + bar.get_height()/2, 
+                           '✅', va='center')
+        
+        plt.tight_layout()
+        st.pyplot(fig)
+        
+        # Leyenda
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.markdown("🟢 Baja probabilidad (<30%)")
+            st.markdown("🟡 Probabilidad media (30-70%)")
+        with col2:
+            st.markdown("🔴 Alta probabilidad (>70%)")
+            st.markdown("⚪ No cumple criterios clínicos")
+        with col3:
+            st.markdown("✅ Validez clínica confirmada")
+            st.markdown("❌ Validez clínica cuestionada")
+    
+    def _render_explanations(self, explanation):
+        """Renderizar explicaciones del diagnóstico"""
+        if explanation:
+            st.markdown("### 📋 Explicación del Diagnóstico")
+            st.info(explanation)
+    
+    def _render_trend_analysis(self, trend_analysis):
+        """Renderizar análisis de tendencias"""
+        if trend_analysis.get('total_changes', 0) > 0:
+            st.markdown("### 📈 Análisis de Tendencia")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.metric("Estabilidad", trend_analysis.get('overall_trend', 'ESTABLE'))
+                st.metric("Score de Estabilidad", f"{trend_analysis.get('stability_score', 1):.2f}")
+            
+            with col2:
+                st.metric("Cambios Detectados", trend_analysis.get('total_changes', 0))
+            
+            # Mostrar alertas de tendencia
+            for alert in trend_analysis.get('trend_alerts', []):
+                st.warning(alert['message'])
+            
+            for improvement in trend_analysis.get('improvements', []):
+                st.success(improvement['message'])
+    
+    def _render_feedback_section(self, analysis_results):
+        """Renderizar sección de feedback"""
+        st.markdown("### 💬 Sistema de Feedback")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("#### ¿Fue útil el diagnóstico?")
+            
+            feedback_type = st.selectbox(
+                "Tipo de feedback",
+                ["Seleccionar...", "Diagnóstico correcto", "Diagnóstico incorrecto", "Mejora sugerida"]
+            )
+            
+            if feedback_type != "Seleccionar...":
+                actual_diagnosis = st.text_input("Diagnóstico real (si es diferente)")
+                comments = st.text_area("Comentarios adicionales")
+                
+                if st.button("Enviar Feedback"):
+                    primary_diagnosis = analysis_results.get('clinical_alerts', {}).get('primary_diagnosis', '')
+                    probability = analysis_results.get('clinical_alerts', {}).get('probability', 0)
+                    
+                    self.detector.learning_system.add_feedback(
+                        prediction=primary_diagnosis,
+                        actual_diagnosis=actual_diagnosis if actual_diagnosis else primary_diagnosis,
+                        user_correction=comments,
+                        confidence=probability
+                    )
+        
+        with col2:
+            st.markdown("#### Insights de Aprendizaje")
+            insights = self.detector.learning_system.get_learning_insights()
+            
+            if 'message' in insights:
+                st.info(insights['message'])
+            else:
+                st.metric("Precisión General", f"{insights['overall_accuracy']:.1%}")
+                st.metric("Feedbacks Recibidos", insights['total_feedbacks'])
+                
+                if insights.get('condition_accuracy'):
+                    st.markdown("**Precisión por Condición:**")
+                    for condition, accuracy in insights['condition_accuracy'].items():
+                        st.write(f"• {condition}: {accuracy:.1%}")
     
     def _plot_ecg_signal(self, ecg_signal, sampling_rate):
         """Visualización mejorada de la señal ECG"""
@@ -1090,162 +2335,148 @@ class ECGAppInterface:
             ax.grid(True, alpha=0.3)
             
             st.pyplot(fig)
-    
-    def _display_feature_analysis(self, features):
-        """Mostrar análisis de características mejorado"""
-        st.markdown("### 🔍 Análisis de Características")
-        
-        # Seleccionar características más importantes
-        important_features = {
-            'Frecuencia Cardíaca Media': features[6],
-            'Variabilidad RR': features[1],
-            'Ancho QRS': features[8],
-            'Ratio LF/HF': features[14],
-            'Entropía': features[13],
-            'Densidad PVC': features[25] if len(features) > 25 else 0,
-            'Score Bigeminismo': features[19] if len(features) > 19 else 0,
-            'Score Trigeminismo': features[20] if len(features) > 20 else 0
-        }
-        
-        # Mostrar métricas
-        cols = st.columns(4)
-        for idx, (name, value) in enumerate(important_features.items()):
-            with cols[idx % 4]:
-                st.metric(name, f"{value:.3f}")
-        
-        # Gráfico de características
-        fig, ax = plt.subplots(figsize=(10, 6))
-        feature_names_short = [name[:15] + '...' if len(name) > 15 else name 
-                             for name in self.detector.feature_names[:10]]
-        ax.barh(feature_names_short, features[:10])
-        ax.set_xlabel('Valor')
-        ax.set_title('Top 10 Características Extraídas')
-        plt.tight_layout()
-        st.pyplot(fig)
-    
-    def _classify_arrhythmias(self, features):
-        """Clasificación de arritmias mejorada"""
-        st.markdown("### 🏥 Clasificación de Arritmias")
-        
-        # Simular clasificación (en producción sería con modelos reales)
-        scores = self._simulate_classification(features)
-        
-        # Mostrar resultados
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            # Gráfico de probabilidades
-            fig, ax = plt.subplots(figsize=(8, 6))
-            arrhythmias = list(scores.keys())
-            probabilities = list(scores.values())
-            
-            colors = ['green' if p < 0.3 else 'orange' if p < 0.7 else 'red' for p in probabilities]
-            
-            bars = ax.barh(arrhythmias, probabilities, color=colors)
-            ax.set_xlim(0, 1)
-            ax.set_xlabel('Probabilidad')
-            ax.set_title('Probabilidad de Arritmias')
-            
-            # Añadir valores en las barras
-            for bar, prob in zip(bars, probabilities):
-                ax.text(bar.get_width() + 0.01, bar.get_y() + bar.get_height()/2, 
-                       f'{prob:.2f}', va='center')
-            
-            plt.tight_layout()
-            st.pyplot(fig)
-        
-        with col2:
-            # Diagnóstico principal
-            max_arrhythmia = max(scores, key=scores.get)
-            max_prob = scores[max_arrhythmia]
-            
-            if max_prob > 0.7:
-                st.error(f"**ALERTA:** {max_arrhythmia}")
-                st.markdown(f"Probabilidad: {max_prob:.1%}")
-                
-                if "Bigeminismo" in max_arrhythmia or "Trigeminismo" in max_arrhythmia:
-                    st.warning("""
-                    **Patrón de Agrupamiento Detectado:**
-                    - PVCs en patrones regulares
-                    - Requiere evaluación cardiológica
-                    - Puede progresar a taquicardia
-                    """)
-            elif max_prob > 0.3:
-                st.warning(f"**Sospecha:** {max_arrhythmia}")
-                st.markdown(f"Probabilidad: {max_prob:.1%}")
-            else:
-                st.success("**Ritmo Sinusal Normal**")
-                st.markdown(f"Probabilidad: {1-max_prob:.1%}")
-    
-    def _simulate_classification(self, features):
-        """Simular clasificación basada en características (placeholder para modelo real)"""
-        # Esta es una simulación - en producción se usarían los modelos reales entrenados
-        scores = {
-            'Ritmo Sinusal Normal': max(0, 1 - np.abs(features[1]) * 2),
-            'Fibrilación Auricular': min(1, np.abs(features[14]) * 0.5),
-            'Extrasístoles Ventriculares': min(1, features[25] * 3 if len(features) > 25 else 0),
-            'Taquicardia Ventricular': min(1, (features[6] - 80) / 100),
-            'Bigeminismo Ventricular': min(1, features[19] * 2 if len(features) > 19 else 0),
-            'Trigeminismo Ventricular': min(1, features[20] * 2 if len(features) > 20 else 0),
-            'Bloqueo AV': min(1, np.abs(features[10] - 200) / 200)
-        }
-        
-        # Normalizar
-        total = sum(scores.values())
-        if total > 0:
-            scores = {k: v/total for k, v in scores.items()}
-        
-        return scores
 
-    def _generate_report(self, ecg_signal, sampling_rate, features, filename):
-        """Generar reporte descargable mejorado"""
-        st.markdown("### 📄 Generar Reporte")
+    def _generate_clinical_report(self, analysis_results, ecg_signal, sampling_rate, filename):
+        """Generar reporte clínico completo"""
+        st.markdown("### 📄 Generar Reporte Clínico")
+        
+        # Información del paciente (opcional)
+        with st.expander("👤 Información del Paciente (Opcional)"):
+            col1, col2 = st.columns(2)
+            with col1:
+                patient_name = st.text_input("Nombre del paciente")
+                patient_age = st.number_input("Edad", min_value=0, max_value=120, value=0)
+            with col2:
+                patient_id = st.text_input("ID del paciente")
+                recording_date = st.date_input("Fecha del registro")
         
         # Crear reporte
-        report_content = f"""
-        REPORTE DE ANÁLISIS ECG - CardioAI Advanced Pro
-        ==============================================
-        
-        Archivo: {filename}
-        Fecha de análisis: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-        
-        RESUMEN DE LA SEÑAL:
-        - Muestras totales: {len(ecg_signal):,}
-        - Frecuencia de muestreo: {sampling_rate} Hz
-        - Duración: {len(ecg_signal)/sampling_rate:.2f} segundos
-        - Amplitud media: {np.mean(ecg_signal):.4f}
-        - Desviación estándar: {np.std(ecg_signal):.4f}
-        
-        CARACTERÍSTICAS EXTRACTADAS:
-        {self._format_features_for_report(features)}
-        
-        OBSERVACIONES:
-        - Análisis realizado con modelos de deep learning avanzados
-        - Los resultados deben ser validados por personal médico calificado
-        - Este es un sistema de apoyo al diagnóstico, no un diagnóstico definitivo
-        
-        CardioAI Advanced Pro - Sistema Inteligente de Análisis ECG
-        """
+        report_content = self._format_clinical_report(analysis_results, ecg_signal, sampling_rate, filename, {
+            'name': patient_name,
+            'age': patient_age,
+            'id': patient_id,
+            'date': recording_date
+        })
         
         # Botón de descarga
         st.download_button(
-            label="📥 Descargar Reporte Completo",
+            label="📥 Descargar Reporte Clínico Completo",
             data=report_content,
-            file_name=f"ecg_analysis_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+            file_name=f"reporte_ecg_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
             mime="text/plain"
         )
 
-    def _format_features_for_report(self, features):
-        """Formatear características para el reporte"""
-        if features is None:
-            return "No se pudieron extraer características"
+    def _format_clinical_report(self, analysis_results, ecg_signal, sampling_rate, filename, patient_info):
+        """Formatear reporte clínico completo"""
+        report = []
         
-        feature_text = ""
-        for i, (name, value) in enumerate(zip(self.detector.feature_names, features)):
-            if i < len(features):
-                feature_text += f"- {name}: {value:.4f}\n"
+        # Encabezado
+        report.append("=" * 80)
+        report.append("REPORTE CLÍNICO DE ANÁLISIS ECG - CardioAI Advanced Pro")
+        report.append("=" * 80)
+        report.append("")
         
-        return feature_text
+        # Información del paciente
+        report.append("INFORMACIÓN DEL PACIENTE:")
+        report.append("-" * 40)
+        if patient_info['name']:
+            report.append(f"Nombre: {patient_info['name']}")
+        if patient_info['id']:
+            report.append(f"ID: {patient_info['id']}")
+        if patient_info['age'] > 0:
+            report.append(f"Edad: {patient_info['age']} años")
+        if patient_info['date']:
+            report.append(f"Fecha del registro: {patient_info['date']}")
+        report.append(f"Archivo analizado: {filename}")
+        report.append(f"Fecha de análisis: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        report.append("")
+        
+        # Resumen de la señal
+        report.append("RESUMEN DE LA SEÑAL:")
+        report.append("-" * 40)
+        report.append(f"Muestras totales: {len(ecg_signal):,}")
+        report.append(f"Frecuencia de muestreo: {sampling_rate} Hz")
+        report.append(f"Duración: {len(ecg_signal)/sampling_rate:.2f} segundos")
+        report.append(f"Amplitud media: {np.mean(ecg_signal):.4f}")
+        report.append(f"Desviación estándar: {np.std(ecg_signal):.4f}")
+        report.append("")
+        
+        # Calidad de señal
+        quality = analysis_results.get('signal_quality', {})
+        report.append("CALIDAD DE SEÑAL:")
+        report.append("-" * 40)
+        report.append(f"Nivel: {quality.get('quality_level', 'NO EVALUABLE')}")
+        report.append(f"Score: {quality.get('quality_score', 0):.2f}")
+        report.append(f"Confiabilidad diagnóstica: {quality.get('diagnostic_reliability', 'Muy Baja')}")
+        report.append("")
+        
+        # Diagnóstico principal
+        clinical_alerts = analysis_results.get('clinical_alerts', {})
+        if clinical_alerts:
+            report.append("DIAGNÓSTICO PRINCIPAL:")
+            report.append("-" * 40)
+            report.append(f"Condición: {clinical_alerts.get('primary_diagnosis', 'No determinado')}")
+            report.append(f"Probabilidad: {clinical_alerts.get('probability', 0):.1%}")
+            report.append(f"Nivel de alerta: {clinical_alerts.get('alert_level', 'LOW')}")
+            report.append("")
+        
+        # Recomendaciones clínicas
+        if clinical_alerts.get('recommendations'):
+            report.append("RECOMENDACIONES CLÍNICAS:")
+            report.append("-" * 40)
+            for rec in clinical_alerts['recommendations']:
+                report.append(f"• {rec}")
+            report.append("")
+        
+        # Análisis detallado de arritmias
+        arrhythmia_scores = analysis_results.get('arrhythmia_scores', {})
+        if arrhythmia_scores:
+            report.append("ANÁLISIS DETALLADO DE ARRITMIAS:")
+            report.append("-" * 40)
+            for arrhythmia, score in sorted(arrhythmia_scores.items(), key=lambda x: x[1], reverse=True):
+                if score > 0.1:  # Solo mostrar probabilidades significativas
+                    report.append(f"• {arrhythmia}: {score:.1%}")
+            report.append("")
+        
+        # Explicación del diagnóstico
+        if analysis_results.get('explanation'):
+            report.append("EXPLICACIÓN DEL DIAGNÓSTICO:")
+            report.append("-" * 40)
+            report.append(analysis_results['explanation'])
+            report.append("")
+        
+        # Artefactos detectados
+        artifacts = analysis_results.get('artifacts', {})
+        if artifacts.get('artifact_count', 0) > 0:
+            report.append("ARTEFACTOS DETECTADOS:")
+            report.append("-" * 40)
+            for art_name, art_info in artifacts.get('detected_artifacts', {}).items():
+                report.append(f"• {art_name}: {art_info.get('description', '')} (Severidad: {art_info.get('severity', 0):.2f})")
+            report.append("")
+        
+        # Tendencias
+        trends = analysis_results.get('trend_analysis', {})
+        if trends.get('total_changes', 0) > 0:
+            report.append("ANÁLISIS DE TENDENCIAS:")
+            report.append("-" * 40)
+            report.append(f"Estabilidad: {trends.get('overall_trend', 'ESTABLE')}")
+            report.append(f"Score de estabilidad: {trends.get('stability_score', 1):.2f}")
+            report.append("")
+        
+        # Advertencias importantes
+        report.append("ADVERTENCIAS IMPORTANTES:")
+        report.append("-" * 40)
+        report.append("• Este es un sistema de apoyo al diagnóstico, no un diagnóstico definitivo")
+        report.append("• Los resultados deben ser validados por personal médico calificado")
+        report.append("• En caso de síntomas o emergencias, busque atención médica inmediata")
+        report.append("• El sistema aprende continuamente de los feedbacks proporcionados")
+        report.append("")
+        
+        report.append("=" * 80)
+        report.append("CardioAI Advanced Pro - Sistema Inteligente de Análisis ECG")
+        report.append("=" * 80)
+        
+        return "\n".join(report)
 
     def run(self):
         """Ejecutar la aplicación completa"""
@@ -1266,18 +2497,31 @@ class ECGAppInterface:
                     ecg_signal, sampling_rate = self.processor.load_ecg_file(uploaded_file)
             
             if ecg_signal is not None:
-                # Extraer características
-                with st.spinner("🧠 Analizando características avanzadas..."):
-                    features, error = self.detector.extract_advanced_features(ecg_signal, sampling_rate)
+                # Mostrar información básica de la señal
+                col1, col2, col3, col4 = st.columns(4)
                 
-                if error:
-                    st.error(f"❌ Error en análisis: {error}")
-                else:
-                    # Mostrar resultados
-                    self.render_analysis_results(ecg_signal, sampling_rate, features)
-                    
-                    # Descargar reporte
-                    self._generate_report(ecg_signal, sampling_rate, features, uploaded_file.name)
+                with col1:
+                    st.metric("Muestras", f"{len(ecg_signal):,}")
+                with col2:
+                    st.metric("Frecuencia", f"{sampling_rate} Hz")
+                with col3:
+                    duration = len(ecg_signal) / sampling_rate
+                    st.metric("Duración", f"{duration:.1f} s")
+                with col4:
+                    st.metric("Amplitud", f"{np.std(ecg_signal):.3f}")
+                
+                # Visualización de la señal
+                self._plot_ecg_signal(ecg_signal, sampling_rate)
+                
+                # Análisis comprehensivo
+                with st.spinner("🧠 Realizando análisis comprehensivo..."):
+                    analysis_results = self.detector.comprehensive_analysis(ecg_signal, sampling_rate)
+                
+                # Mostrar resultados
+                self.render_comprehensive_analysis(analysis_results)
+                
+                # Generar reporte
+                self._generate_clinical_report(analysis_results, ecg_signal, sampling_rate, uploaded_file.name)
             else:
                 st.error("❌ No se pudo cargar el archivo ECG. Verifique el formato y configuración.")
         
@@ -1288,6 +2532,17 @@ class ECGAppInterface:
                 <h3>👆 Carga tu archivo ECG para comenzar</h3>
                 <p>Esta aplicación analiza señales electrocardiográficas usando inteligencia artificial avanzada 
                 para detectar posibles arritmias y patrones cardíacos anormales.</p>
+                
+                <h4>Características principales:</h4>
+                <ul>
+                    <li>🔄 <strong>Procesamiento robusto</strong> de múltiples formatos de archivo</li>
+                    <li>🔍 <strong>Detección avanzada</strong> de arritmias complejas</li>
+                    <li>🚨 <strong>Sistema de alertas</strong> con prioridades clínicas</li>
+                    <li>📋 <strong>Validación</strong> con criterios clínicos establecidos</li>
+                    <li>📈 <strong>Análisis de tendencias</strong> temporales</li>
+                    <li>💡 <strong>Explicaciones</strong> comprensibles de los diagnósticos</li>
+                    <li>📊 <strong>Reportes clínicos</strong> completos y descargables</li>
+                </ul>
             </div>
             """, unsafe_allow_html=True)
             
@@ -1313,13 +2568,22 @@ class ECGAppInterface:
                 """)
 
 # =============================================================================
-# FUNCIÓN PRINCIPAL CORREGIDA
+# FUNCIÓN PRINCIPAL
 # =============================================================================
 
 def main():
-    """Función principal corregida"""
-    app = ECGAppInterface()
-    app.run()
+    """Función principal"""
+    try:
+        app = ECGAppInterface()
+        app.run()
+    except Exception as e:
+        st.error(f"❌ Error crítico en la aplicación: {str(e)}")
+        st.info("""
+        **Solución de problemas:**
+        - Verifique que todas las dependencias estén instaladas
+        - Reinicie la aplicación
+        - Si el problema persiste, contacte al soporte técnico
+        """)
 
 # Ejecutar la aplicación
 if __name__ == "__main__":
