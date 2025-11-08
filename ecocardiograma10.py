@@ -1,5 +1,3 @@
-[file name]: ecocardiograma5.py
-[file content begin]
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -18,7 +16,8 @@ import seaborn as sns
 import cv2
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import pydicom  # Añadido para soporte DICOM completo
+import pydicom
+from pydicom.pixel_data_handlers.util import apply_voi_lut
 
 # Configurar PIL para ser más tolerante con archivos dañados
 ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -149,6 +148,12 @@ class AdvancedEchoImageAnalyzer:
                     if hasattr(ds, 'pixel_array'):
                         image_array = ds.pixel_array
                         
+                        # Aplicar VOI LUT si está disponible (mejora el contraste)
+                        try:
+                            image_array = apply_voi_lut(image_array, ds)
+                        except:
+                            pass
+                        
                         # Mejor procesamiento de imágenes DICOM
                         if image_array.dtype != np.uint8:
                             # Normalizar según el tipo de datos
@@ -223,33 +228,91 @@ class AdvancedEchoImageAnalyzer:
             return None
 
     def safe_image_display(self, image_file, caption=""):
-        """Mostrar imagen de manera segura"""
+        """Mostrar imagen de manera segura - CORREGIDO para DICOM"""
         try:
-            if hasattr(image_file, 'read'):
-                image_file.seek(0)
-                image = Image.open(image_file)
-                # Redimensionar si es muy grande para mejor visualización
-                if image.size[0] > 1000 or image.size[1] > 1000:
-                    image.thumbnail((800, 800), Image.Resampling.LANCZOS)
-                st.image(image, caption=caption, use_column_width=True)
-                image_file.seek(0)
-                return True
-            elif isinstance(image_file, np.ndarray):
+            file_type = self.detect_file_type(image_file)
+            
+            if file_type == 'dicom':
+                # Procesamiento especial para DICOM
+                try:
+                    image_file.seek(0)
+                    ds = pydicom.dcmread(image_file, force=True)
+                    
+                    if hasattr(ds, 'pixel_array'):
+                        image_array = ds.pixel_array
+                        
+                        # Aplicar VOI LUT para mejor contraste
+                        try:
+                            image_array = apply_voi_lut(image_array, ds)
+                        except:
+                            pass
+                        
+                        # Normalizar a 8-bit
+                        if image_array.dtype != np.uint8:
+                            image_array = image_array.astype(np.float32)
+                            if np.max(image_array) > np.min(image_array):
+                                image_array = (image_array - np.min(image_array)) / (np.max(image_array) - np.min(image_array)) * 255
+                            image_array = image_array.astype(np.uint8)
+                        
+                        # Convertir a PIL Image
+                        if len(image_array.shape) == 2:  # Escala de grises
+                            image = Image.fromarray(image_array, mode='L')
+                        else:  # Color
+                            image = Image.fromarray(image_array)
+                        
+                        # Redimensionar si es muy grande
+                        if image.size[0] > 1000 or image.size[1] > 1000:
+                            image.thumbnail((800, 800), Image.Resampling.LANCZOS)
+                        
+                        st.image(image, caption=f"📄 DICOM: {caption}", use_container_width=True)
+                        image_file.seek(0)
+                        return True
+                    else:
+                        st.error(f"Archivo DICOM sin datos de imagen: {caption}")
+                        return False
+                        
+                except Exception as dicom_error:
+                    st.error(f"Error procesando DICOM {caption}: {str(dicom_error)}")
+                    return False
+                    
+            elif file_type in ['jpeg', 'png', 'tiff', 'bmp', 'image']:
+                # Para formatos de imagen estándar
+                try:
+                    if hasattr(image_file, 'read'):
+                        image_file.seek(0)
+                        image = Image.open(image_file)
+                        # Redimensionar si es muy grande para mejor visualización
+                        if image.size[0] > 1000 or image.size[1] > 1000:
+                            image.thumbnail((800, 800), Image.Resampling.LANCZOS)
+                        st.image(image, caption=caption, use_container_width=True)
+                        image_file.seek(0)
+                        return True
+                except Exception as e:
+                    st.error(f"Error mostrando imagen estándar {caption}: {str(e)}")
+                    return False
+                    
+            elif file_type == 'numpy_array':
                 # Convertir array numpy a imagen PIL
-                if len(image_file.shape) == 2:  # Escala de grises
-                    image = Image.fromarray(image_file.astype('uint8'))
-                else:  # Color
-                    image = Image.fromarray(image_file.astype('uint8'))
-                
-                if image.size[0] > 1000 or image.size[1] > 1000:
-                    image.thumbnail((800, 800), Image.Resampling.LANCZOS)
-                st.image(image, caption=caption, use_column_width=True)
-                return True
+                try:
+                    if len(image_file.shape) == 2:  # Escala de grises
+                        image = Image.fromarray(image_file.astype('uint8'), mode='L')
+                    else:  # Color
+                        image = Image.fromarray(image_file.astype('uint8'))
+                    
+                    if image.size[0] > 1000 or image.size[1] > 1000:
+                        image.thumbnail((800, 800), Image.Resampling.LANCZOS)
+                    st.image(image, caption=caption, use_container_width=True)
+                    return True
+                except Exception as e:
+                    st.error(f"Error mostrando array numpy {caption}: {str(e)}")
+                    return False
+                    
             else:
-                st.image(image_file, caption=caption, use_column_width=True)
-                return True
+                st.error(f"Tipo de archivo no soportado para visualización: {file_type}")
+                return False
+                
         except Exception as e:
-            st.error(f"Error mostrando imagen {caption}: {str(e)}")
+            st.error(f"Error general mostrando imagen {caption}: {str(e)}")
             return False
 
     def preprocess_echo_image(self, image):
@@ -414,8 +477,6 @@ class AdvancedEchoImageAnalyzer:
                 return "unknown"
         except:
             return "unknown"
-
-    # ... (el resto de los métodos se mantienen igual pero con mejor manejo de errores)
 
     def enhanced_chagas_analysis(self, image, view_type):
         """Análisis mejorado específico para Chagas"""
@@ -1690,4 +1751,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-[file content end]
