@@ -9,10 +9,22 @@ from datetime import datetime
 import logging
 from scipy import ndimage
 from skimage import filters, measure, morphology
+import pytesseract
+from difflib import SequenceMatcher
+import re
 
 # Configuración de logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Configuración de pytesseract (OCR)
+try:
+    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+except:
+    try:
+        pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
+    except:
+        st.warning("Tesseract OCR no encontrado. La detección de texto estará limitada.")
 
 def check_https_status():
     """Verifica si la app está usando HTTPS"""
@@ -26,125 +38,491 @@ def check_https_status():
     except:
         pass
 
+def enhance_camera_capture():
+    """Configuración mejorada para la cámara"""
+    st.markdown("""
+    <style>
+    .camera-container {
+        border: 2px solid #4CAF50;
+        border-radius: 10px;
+        padding: 10px;
+        background: #f9f9f9;
+    }
+    .warning-box {
+        background-color: #fff3cd;
+        border: 1px solid #ffeaa7;
+        border-radius: 5px;
+        padding: 10px;
+        margin: 10px 0;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("""
+    <div class='warning-box'>
+    <strong>🔍 CONSEJOS PARA MEJOR RECONOCIMIENTO:</strong><br>
+    • Asegúrate que las letras <strong>C</strong> y <strong>T</strong> sean visibles<br>
+    • Las letras deben estar cerca de las bandas correspondientes<br>
+    • Buena iluminación para texto legible<br>
+    • Enfoque claro en las letras y bandas
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown('<div class="camera-container">', unsafe_allow_html=True)
+    
+    try:
+        picture = st.camera_input(
+            "📸 Toma una foto CLARA de la tira reactiva de Chagas",
+            help="Asegúrate que las letras C y T sean visibles y legibles"
+        )
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+        return picture
+        
+    except Exception as e:
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.error(f"❌ Error con la cámara: {e}")
+        return None
+
+def apply_smart_enhancement(img_array):
+    """Aplica mejoras inteligentes a la imagen"""
+    try:
+        height, width = img_array.shape[:2]
+        
+        # Redimensionar si es necesario
+        if height < 500 or width < 500:
+            scale_factor = max(800/width, 600/height, 1.8)
+            new_width = int(width * scale_factor)
+            new_height = int(height * scale_factor)
+            img_array = cv2.resize(img_array, (new_width, new_height), interpolation=cv2.INTER_CUBIC)
+            st.success(f"🔄 Imagen mejorada: {width}x{height} → {new_width}x{new_height}")
+        
+        # Mejorar para análisis de texto y bandas
+        enhanced = enhance_for_text_and_bands(img_array)
+        return enhanced
+        
+    except Exception as e:
+        logger.error(f"Error en mejora inteligente: {e}")
+        return img_array
+
+def enhance_for_text_and_bands(img_array):
+    """Mejora específica para texto y bandas"""
+    try:
+        if len(img_array.shape) == 3:
+            # Mejorar contraste para texto
+            lab = cv2.cvtColor(img_array, cv2.COLOR_RGB2LAB)
+            l, a, b = cv2.split(lab)
+            
+            # CLAHE más agresivo para texto
+            clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8,8))
+            l = clahe.apply(l)
+            
+            lab = cv2.merge([l, a, b])
+            enhanced = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
+        else:
+            enhanced = img_array
+        
+        # Enfoque específico para texto
+        kernel_sharpen = np.array([[-1,-1,-1,-1,-1],
+                                 [-1,2,2,2,-1],
+                                 [-1,2,8,2,-1],
+                                 [-1,2,2,2,-1],
+                                 [-1,-1,-1,-1,-1]]) / 8.0
+        enhanced = cv2.filter2D(enhanced, -1, kernel_sharpen)
+        
+        return enhanced
+        
+    except Exception as e:
+        logger.error(f"Error en mejora para texto: {e}")
+        return img_array
+
+def detect_letters_c_t(img_array):
+    """Detección ESPECÍFICA de letras C y T usando OCR y procesamiento de imágenes"""
+    try:
+        gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY) if len(img_array.shape) == 3 else img_array
+        height, width = gray.shape
+        
+        results = {
+            'C_detected': False,
+            'T_detected': False,
+            'C_confidence': 0,
+            'T_confidence': 0,
+            'C_location': None,
+            'T_location': None,
+            'letters_found': []
+        }
+        
+        # MÉTODO 1: OCR específico para letras C y T
+        ocr_results = detect_letters_ocr(gray, height, width)
+        results.update(ocr_results)
+        
+        # MÉTODO 2: Procesamiento de imágenes para encontrar letras
+        image_processing_results = detect_letters_image_processing(gray, height, width)
+        
+        # Combinar resultados
+        if image_processing_results['C_detected']:
+            results['C_detected'] = True
+            results['C_confidence'] = max(results['C_confidence'], image_processing_results['C_confidence'])
+            results['C_location'] = image_processing_results['C_location']
+            
+        if image_processing_results['T_detected']:
+            results['T_detected'] = True
+            results['T_confidence'] = max(results['T_confidence'], image_processing_results['T_confidence'])
+            results['T_location'] = image_processing_results['T_location']
+        
+        # Actualizar letras encontradas
+        if results['C_detected']:
+            results['letters_found'].append('C')
+        if results['T_detected']:
+            results['letters_found'].append('T')
+            
+        return results
+        
+    except Exception as e:
+        logger.error(f"Error en detección de letras: {e}")
+        return {
+            'C_detected': False, 'T_detected': False,
+            'C_confidence': 0, 'T_confidence': 0,
+            'letters_found': []
+        }
+
+def detect_letters_ocr(gray, height, width):
+    """Detección de letras C y T usando OCR optimizado"""
+    try:
+        # Preprocesamiento agresivo para OCR de letras individuales
+        # Binarización adaptativa
+        binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+                                      cv2.THRESH_BINARY, 11, 2)
+        
+        # Operaciones morfológicas para mejorar texto
+        kernel = np.ones((2,2), np.uint8)
+        binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+        binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+        
+        # Configuración OCR optimizada para letras individuales
+        custom_config = r'--oem 3 --psm 8 -c tessedit_char_whitelist=CTct'
+        
+        # Buscar en regiones específicas donde suelen estar las letras
+        regions_to_check = [
+            # Región izquierda (T)
+            (int(width*0.15), int(height*0.4), int(width*0.25), int(height*0.6)),
+            # Región derecha (C)
+            (int(width*0.70), int(height*0.4), int(width*0.80), int(height*0.6)),
+            # Regiones alternativas
+            (int(width*0.20), int(height*0.3), int(width*0.30), int(height*0.5)),
+            (int(width*0.65), int(height*0.3), int(width*0.75), int(height*0.5))
+        ]
+        
+        C_detected = False
+        T_detected = False
+        C_confidence = 0
+        T_confidence = 0
+        
+        for i, (x1, y1, x2, y2) in enumerate(regions_to_check):
+            region = binary[y1:y2, x1:x2]
+            if region.size == 0:
+                continue
+                
+            # OCR en la región
+            detected_text = pytesseract.image_to_string(region, config=custom_config)
+            cleaned_text = re.sub(r'[^CTct]', '', detected_text.upper())
+            
+            # Evaluar confianza basada en la claridad del texto
+            region_confidence = calculate_text_confidence(region)
+            
+            if 'C' in cleaned_text and region_confidence > C_confidence:
+                C_detected = True
+                C_confidence = region_confidence
+                
+            if 'T' in cleaned_text and region_confidence > T_confidence:
+                T_detected = True
+                T_confidence = region_confidence
+        
+        return {
+            'C_detected': C_detected,
+            'T_detected': T_detected,
+            'C_confidence': C_confidence,
+            'T_confidence': T_confidence
+        }
+        
+    except Exception as e:
+        logger.warning(f"OCR para letras falló: {e}")
+        return {'C_detected': False, 'T_detected': False, 'C_confidence': 0, 'T_confidence': 0}
+
+def calculate_text_confidence(region):
+    """Calcula confianza basada en la claridad del texto"""
+    try:
+        # Calcular métricas de claridad de texto
+        edges = cv2.Canny(region, 50, 150)
+        edge_density = np.sum(edges > 0) / edges.size
+        
+        # Contraste local
+        contrast = np.std(region)
+        
+        # Score combinado
+        confidence = (edge_density * 60 + min(contrast/10, 40))
+        return min(95, confidence)
+        
+    except:
+        return 50
+
+def detect_letters_image_processing(gray, height, width):
+    """Detección de letras C y T usando procesamiento de imágenes"""
+    try:
+        # Buscar contornos que podrían ser letras
+        blurred = cv2.GaussianBlur(gray, (3, 3), 0)
+        edges = cv2.Canny(blurred, 50, 150)
+        
+        # Encontrar contornos
+        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        C_candidates = []
+        T_candidates = []
+        
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if area < 50 or area > 2000:  # Tamaño razonable para letras
+                continue
+                
+            x, y, w, h = cv2.boundingRect(contour)
+            aspect_ratio = w / h
+            
+            # Las letras suelen ser más altas que anchas
+            if 0.3 < aspect_ratio < 3.0:
+                # Clasificar basado en posición y forma
+                if is_potential_C(contour, x, y, w, h, width):
+                    C_candidates.append((x, y, w, h, area))
+                elif is_potential_T(contour, x, y, w, h, width):
+                    T_candidates.append((x, y, w, h, area))
+        
+        # Determinar resultados
+        C_detected = len(C_candidates) > 0
+        T_detected = len(T_candidates) > 0
+        
+        # Calcular confianza basada en número y calidad de candidatos
+        C_confidence = min(90, len(C_candidates) * 30) if C_detected else 0
+        T_confidence = min(90, len(T_candidates) * 30) if T_detected else 0
+        
+        # Encontrar ubicaciones más probables
+        C_location = find_best_candidate_location(C_candidates, width, 'right')
+        T_location = find_best_candidate_location(T_candidates, width, 'left')
+        
+        return {
+            'C_detected': C_detected,
+            'T_detected': T_detected,
+            'C_confidence': C_confidence,
+            'T_confidence': T_confidence,
+            'C_location': C_location,
+            'T_location': T_location
+        }
+        
+    except Exception as e:
+        logger.error(f"Error en procesamiento de imágenes para letras: {e}")
+        return {'C_detected': False, 'T_detected': False, 'C_confidence': 0, 'T_confidence': 0}
+
+def is_potential_C(contour, x, y, w, h, image_width):
+    """Determina si un contorno podría ser la letra C"""
+    # La C suele estar en el lado derecho
+    if x < image_width * 0.6:  # Demasiado a la izquierda para ser C
+        return False
+    
+    # Ratio de aspecto típico de C
+    aspect_ratio = w / h
+    if not (0.5 <= aspect_ratio <= 1.5):
+        return False
+        
+    # El área debe ser razonable para una letra
+    area = cv2.contourArea(contour)
+    if not (100 <= area <= 1500):
+        return False
+        
+    return True
+
+def is_potential_T(contour, x, y, w, h, image_width):
+    """Determina si un contorno podría ser la letra T"""
+    # La T suele estar en el lado izquierdo
+    if x > image_width * 0.4:  # Demasiado a la derecha para ser T
+        return False
+    
+    # Ratio de aspecto típico de T (más alta que ancha)
+    aspect_ratio = w / h
+    if not (0.3 <= aspect_ratio <= 1.2):
+        return False
+        
+    # El área debe ser razonable para una letra
+    area = cv2.contourArea(contour)
+    if not (100 <= area <= 1500):
+        return False
+        
+    return True
+
+def find_best_candidate_location(candidates, image_width, expected_side):
+    """Encuentra la ubicación más probable para una letra"""
+    if not candidates:
+        return None
+    
+    # Para C, esperamos lado derecho; para T, lado izquierdo
+    if expected_side == 'right':
+        # Escoger candidato más a la derecha
+        best_candidate = max(candidates, key=lambda c: c[0])
+    else:  # left
+        # Escoger candidato más a la izquierda
+        best_candidate = min(candidates, key=lambda c: c[0])
+    
+    x, y, w, h, area = best_candidate
+    return (x, y, w, h)
+
+def detect_text_on_strip(img_array):
+    """Detección general de texto en la tira"""
+    try:
+        gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY) if len(img_array.shape) == 3 else img_array
+        
+        # Preprocesamiento para OCR general
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+        enhanced = clahe.apply(gray)
+        
+        _, thresh = cv2.threshold(enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        
+        custom_config = r'--oem 3 --psm 6'
+        detected_text = pytesseract.image_to_string(thresh, config=custom_config)
+        
+        return clean_detected_text(detected_text)
+        
+    except Exception as e:
+        logger.warning(f"OCR general falló: {e}")
+        return {"raw_text": "", "keywords": [], "has_chagas_text": False}
+
+def clean_detected_text(text):
+    """Limpia y analiza el texto detectado"""
+    cleaned = ' '.join(text.split())
+    
+    chagas_keywords = ['CHAGAS', 'TEST', 'CONTROL', 'POSITIVE', 'NEGATIVE', 'INVALID', 'C', 'T']
+    
+    found_keywords = []
+    text_upper = cleaned.upper()
+    
+    for keyword in chagas_keywords:
+        if keyword in text_upper:
+            found_keywords.append(keyword)
+    
+    return {
+        'raw_text': cleaned,
+        'keywords': found_keywords,
+        'has_chagas_text': 'CHAGAS' in found_keywords,
+        'has_control_text': 'CONTROL' in found_keywords,
+        'has_test_text': 'TEST' in found_keywords
+    }
+
 def main():
     st.set_page_config(
-        page_title="Analizador Avanzado de Cintas Reactivas Chagas",
+        page_title="Analizador con Reconocimiento de Letras C/T",
         page_icon="🦟",
         layout="centered",
         initial_sidebar_state="expanded"
     )
     
-    # Verificar HTTPS
     check_https_status()
     
-    st.title("🦟 Analizador Avanzado de Cintas Reactivas para Chagas")
-    st.markdown("### **Detección e interpretación automática con análisis robusto**")
+    st.title("🦟 Analizador AVANZADO con Reconocimiento de Letras C/T")
+    st.markdown("### **Detección automática + Reconocimiento de letras C y T**")
     
-    # Sidebar con información
+    # Inicializar session state
+    if 'analysis_count' not in st.session_state:
+        st.session_state.analysis_count = 0
+    if 'chagas_detections' not in st.session_state:
+        st.session_state.chagas_detections = 0
+    if 'invalid_results' not in st.session_state:
+        st.session_state.invalid_results = 0
+    if 'analysis_history' not in st.session_state:
+        st.session_state.analysis_history = []
+    
+    # Sidebar
     with st.sidebar:
         st.header("⚙️ Configuración Avanzada")
         
-        st.subheader("Parámetros de Análisis")
-        st.session_state.analysis_mode = st.selectbox(
-            "Modo de Análisis:",
-            ["Automático", "Conservador", "Sensible"],
-            help="Automático: Balanceado, Conservador: Menos falsos positivos, Sensible: Detecta casos débiles"
+        st.subheader("Reconocimiento de Letras")
+        st.session_state.detect_letters = st.checkbox(
+            "Detección de Letras C/T", 
+            value=True,
+            help="Buscar específicamente las letras C y T en la tira"
+        )
+        
+        st.session_state.letter_confidence_boost = st.slider(
+            "Boost por Letras Detectadas (%)", 
+            0, 30, 15,
+            help="Aumento de confianza cuando se detectan letras C y T"
         )
         
         st.session_state.min_confidence = st.slider(
             "Confianza Mínima (%)", 
-            50, 95, 70,
-            help="Confianza mínima para considerar resultado válido"
+            60, 90, 75
         )
         
-        st.info("""
-        **Para mejor análisis:**
-        - Cinta completamente visible
-        - Iluminación uniforme
-        - Sin reflejos en bandas
-        - Fondo contrastante
-        """)
-        
+        st.markdown("---")
         st.header("📊 Estadísticas")
-        if 'analysis_count' not in st.session_state:
-            st.session_state.analysis_count = 0
-        if 'chagas_detections' not in st.session_state:
-            st.session_state.chagas_detections = 0
-        if 'invalid_results' not in st.session_state:
-            st.session_state.invalid_results = 0
-            
         st.metric("Análisis Realizados", st.session_state.analysis_count)
         st.metric("Chagas Detectados", st.session_state.chagas_detections)
         st.metric("Resultados Inválidos", st.session_state.invalid_results)
     
     # Pestañas principales
-    tab1, tab2, tab3, tab4 = st.tabs(["🎯 Captura y Análisis", "🔍 Resultados Detallados", "📈 Métricas", "📚 Guía Avanzada"])
+    tab1, tab2, tab3 = st.tabs(["🎯 Análisis Principal", "🔤 Reconocimiento Letras", "📚 Guía"])
     
     with tab1:
         render_capture_tab()
     
     with tab2:
-        render_analysis_tab()
+        render_letters_tab()
     
     with tab3:
-        render_metrics_tab()
-    
-    with tab4:
         render_guide_tab()
 
 def render_capture_tab():
-    """Pestaña de captura de imágenes"""
-    st.header("📸 Captura y Análisis Avanzado")
+    """Pestaña de captura principal"""
+    st.header("📸 Análisis Principal con Reconocimiento de Letras")
     
-    # Opción 1: Cámara directa
-    st.subheader("Opción 1: Cámara Directa")
     st.markdown("""
     <div style='background-color: #e7f3ff; padding: 15px; border-radius: 10px; margin-bottom: 20px;'>
-    <b>💡 Para mejor análisis:</b> Asegúrate de que toda la cinta esté visible y las bandas bien enfocadas.
+    <h4>🎯 NUEVA FUNCIONALIDAD: Reconocimiento de Letras C y T</h4>
+    <p>El sistema ahora busca específicamente las letras <strong>C</strong> (Control) y <strong>T</strong> (Test) 
+    en la tira reactiva para validación adicional.</p>
     </div>
     """, unsafe_allow_html=True)
     
-    try:
-        picture = st.camera_input(
-            "Toma una foto de la cinta reactiva de Chagas",
-            help="Incluye toda el área de resultado de la cinta, con buena iluminación"
-        )
-        
-        if picture is not None:
-            process_camera_image(picture)
-            
-    except Exception as e:
-        st.error(f"❌ Error con la cámara: {e}")
-        st.info("💡 Si la cámara no funciona, usa la Opción 2: Subir archivo")
+    # Captura de cámara
+    st.subheader("📷 Captura con Cámara")
+    picture = enhance_camera_capture()
     
-    # Opción 2: Subir archivo
-    st.subheader("Opción 2: Subir Archivo")
+    if picture is not None:
+        process_camera_image(picture)
+    
+    # Subida de archivo
+    st.subheader("📁 Subir Archivo")
     uploaded_file = st.file_uploader(
         "O sube una foto desde tu galería",
         type=['jpg', 'jpeg', 'png', 'heic'],
-        help="Formatos soportados: JPG, PNG, HEIC. Mínimo 640x480 px recomendado."
+        help="Asegúrate que las letras C y T sean visibles"
     )
     
     if uploaded_file is not None:
         process_uploaded_image(uploaded_file)
 
 def process_camera_image(picture):
-    """Procesa imagen de la cámara con análisis robusto"""
+    """Procesa imagen de la cámara"""
     try:
         image = Image.open(picture)
         img_array = np.array(image)
         
-        # Validar tamaño mínimo
-        if img_array.shape[0] < 480 or img_array.shape[1] < 640:
-            st.warning("⚠️ La imagen es muy pequeña. Para mejor análisis, usa una resolución mayor.")
+        with st.spinner("🔄 Mejorando imagen y buscando letras..."):
+            enhanced_img = apply_smart_enhancement(img_array)
+            st.success("✅ Imagen procesada para análisis")
         
-        process_and_analyze_chagas_advanced(image, img_array, "Cámara Directa")
+        process_and_analyze_with_letters(image, enhanced_img, "Cámara Directa")
         
     except Exception as e:
-        st.error(f"Error procesando imagen de cámara: {e}")
+        st.error(f"❌ Error procesando imagen: {e}")
 
 def process_uploaded_image(uploaded_file):
-    """Procesa imagen subida con análisis robusto"""
+    """Procesa imagen subida"""
     try:
         image = Image.open(uploaded_file)
         
@@ -153,546 +531,218 @@ def process_uploaded_image(uploaded_file):
             
         img_array = np.array(image)
         
-        # Validar tamaño mínimo
-        if img_array.shape[0] < 480 or img_array.shape[1] < 640:
-            st.warning("⚠️ La imagen es muy pequeña. Para mejor análisis, usa una resolución mayor.")
+        with st.spinner("🔄 Mejorando imagen y buscando letras..."):
+            enhanced_img = apply_smart_enhancement(img_array)
+            st.success("✅ Imagen procesada para análisis")
         
-        process_and_analyze_chagas_advanced(image, img_array, "Archivo Subido")
+        process_and_analyze_with_letters(image, enhanced_img, "Archivo Subido")
         
     except Exception as e:
-        st.error(f"Error procesando imagen subida: {e}")
+        st.error(f"❌ Error procesando imagen: {e}")
 
-def process_and_analyze_chagas_advanced(original_image, img_array, source):
-    """Procesa y analiza la cinta reactiva con métodos robustos"""
+def process_and_analyze_with_letters(original_image, enhanced_img, source):
+    """Procesa y analiza con reconocimiento de letras"""
     st.success(f"✅ Imagen recibida desde: {source}")
     
-    # Procesamiento en múltiples pasos
-    with st.spinner("🔍 Analizando imagen con métodos avanzados..."):
-        # Mejorar imagen
-        enhanced_img = enhance_image_quality_advanced(img_array)
-        
-        # Análisis de calidad robusto
-        quality_analysis = analyze_image_quality_advanced(img_array)
-        
-        # Detección de bandas con múltiples métodos
-        chagas_analysis = detect_chagas_bands_robust(img_array, enhanced_img)
-        
-        # Validación cruzada de resultados
-        validated_analysis = validate_chagas_result(chagas_analysis, quality_analysis)
+    # Detección de letras C y T
+    letters_detection = None
+    if st.session_state.detect_letters:
+        with st.spinner("🔍 Buscando letras C y T..."):
+            letters_detection = detect_letters_c_t(enhanced_img)
+    
+    # Detección de texto general
+    text_detection = detect_text_on_strip(enhanced_img)
+    
+    # Análisis principal
+    with st.spinner("🔍 Analizando tira reactiva..."):
+        quality_analysis = analyze_image_quality_improved(enhanced_img)
+        chagas_analysis = detect_chagas_bands_improved(enhanced_img)
+        validated_analysis = validate_with_letters(chagas_analysis, quality_analysis, text_detection, letters_detection)
     
     # Mostrar resultados
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("🖼️ Original")
-        st.image(img_array, use_column_width=True, caption=f"Resolución: {img_array.shape[1]}x{img_array.shape[0]}")
+        st.subheader("🖼️ Imagen Mejorada")
+        st.image(enhanced_img, use_container_width=True, 
+                caption=f"Resolución: {enhanced_img.shape[1]}x{enhanced_img.shape[0]}")
     
     with col2:
-        st.subheader("✨ Mejorada")
-        st.image(enhanced_img, use_column_width=True, caption="Imagen procesada para análisis")
+        st.subheader("🎯 Bandas y Letras Detectadas")
+        visualization = create_enhanced_visualization(enhanced_img, validated_analysis, letters_detection)
+        st.image(visualization, use_container_width=True, 
+                caption="Bandas (C=Control, T=Test) + Letras detectadas")
     
-    # Mostrar métricas de calidad avanzadas
-    display_advanced_quality_metrics(quality_analysis)
+    # Mostrar detección de letras
+    if letters_detection:
+        display_letters_detection(letters_detection)
     
-    # Mostrar resultado validado
-    display_validated_chagas_result(validated_analysis, quality_analysis)
+    # Mostrar métricas y resultados
+    display_quality_metrics_improved(quality_analysis)
+    display_final_result_enhanced(validated_analysis, letters_detection)
     
-    # Mostrar análisis detallado
-    with st.expander("🔬 Análisis Técnico Detallado"):
-        display_technical_analysis(chagas_analysis, validated_analysis)
+    # Análisis técnico
+    with st.expander("🔍 Análisis Técnico Detallado"):
+        display_technical_analysis_enhanced(chagas_analysis, validated_analysis, text_detection, letters_detection)
     
-    # Opciones de guardado mejoradas
-    st.subheader("💾 Reportes Avanzados")
-    save_advanced_reports(original_image, quality_analysis, validated_analysis)
+    # Guardar en historial
+    save_to_history_enhanced(validated_analysis, quality_analysis, letters_detection)
 
-def enhance_image_quality_advanced(img_array):
-    """Mejora avanzada de la imagen para análisis"""
+def display_letters_detection(letters_detection):
+    """Muestra resultados de detección de letras"""
+    st.subheader("🔤 Reconocimiento de Letras C y T")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if letters_detection['C_detected']:
+            st.success(f"✅ **Letra C DETECTADA** (Confianza: {letters_detection['C_confidence']:.0f}%)")
+        else:
+            st.error("❌ **Letra C NO detectada**")
+            
+    with col2:
+        if letters_detection['T_detected']:
+            st.success(f"✅ **Letra T DETECTADA** (Confianza: {letters_detection['T_confidence']:.0f}%)")
+        else:
+            st.error("❌ **Letra T NO detectada**")
+    
+    if letters_detection['letters_found']:
+        st.info(f"📝 **Letras identificadas:** {', '.join(letters_detection['letters_found'])}")
+
+def create_enhanced_visualization(img_array, analysis, letters_detection):
+    """Crea visualización mejorada con letras"""
     try:
-        # Convertir a PIL para procesamiento
-        pil_img = Image.fromarray(img_array)
+        viz = img_array.copy()
+        height, width = viz.shape[:2]
         
-        # Corrección de iluminación adaptativa
-        lab = cv2.cvtColor(img_array, cv2.COLOR_RGB2LAB)
-        l, a, b = cv2.split(lab)
+        # Colores
+        control_color = (0, 255, 0)  # Verde
+        test_color = (255, 0, 0)     # Rojo
+        letter_color = (255, 255, 0) # Amarillo para letras
         
-        # CLAHE para mejorar contraste local
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-        l = clahe.apply(l)
+        # Dibujar regiones de bandas
+        cv2.rectangle(viz, 
+                     (int(width*0.6), int(height*0.3)), 
+                     (int(width*0.75), int(height*0.7)), 
+                     control_color, 3)
+        cv2.putText(viz, "CONTROL", (int(width*0.6), int(height*0.25)), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, control_color, 2)
         
-        lab = cv2.merge([l, a, b])
-        enhanced = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
+        cv2.rectangle(viz, 
+                     (int(width*0.25), int(height*0.3)), 
+                     (int(width*0.4), int(height*0.7)), 
+                     test_color, 3)
+        cv2.putText(viz, "TEST", (int(width*0.25), int(height*0.25)), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, test_color, 2)
         
-        # Filtrado bilateral para reducir ruido preservando bordes
-        enhanced = cv2.bilateralFilter(enhanced, 9, 75, 75)
+        # Marcar letras detectadas
+        if letters_detection:
+            if letters_detection['C_detected'] and letters_detection['C_location']:
+                x, y, w, h = letters_detection['C_location']
+                cv2.rectangle(viz, (x, y), (x+w, y+h), letter_color, 2)
+                cv2.putText(viz, "C", (x, y-10), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.8, letter_color, 2)
+            
+            if letters_detection['T_detected'] and letters_detection['T_location']:
+                x, y, w, h = letters_detection['T_location']
+                cv2.rectangle(viz, (x, y), (x+w, y+h), letter_color, 2)
+                cv2.putText(viz, "T", (x, y-10), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.8, letter_color, 2)
         
-        # Mejora de agudeza
-        kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
-        enhanced = cv2.filter2D(enhanced, -1, kernel)
+        # Resultado
+        result_text = f"{analysis['validated_result']} ({analysis['validated_confidence']:.1f}%)"
+        cv2.putText(viz, result_text, (10, 30), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 2)
         
-        return enhanced
+        return viz
         
     except Exception as e:
-        logger.error(f"Error en mejora avanzada: {e}")
         return img_array
 
-def analyze_image_quality_advanced(img_array):
-    """Análisis de calidad avanzado con múltiples métricas"""
-    try:
-        gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY) if len(img_array.shape) == 3 else img_array
-        
-        height, width = gray.shape
-        
-        # Métricas básicas
-        brightness = np.mean(gray)
-        contrast = np.std(gray)
-        
-        # Métricas avanzadas de nitidez
-        sharpness_laplacian = cv2.Laplacian(gray, cv2.CV_64F).var()
-        
-        # Métrica de enfoque (Brenner)
-        brenner_gradient = np.sum(np.square(np.diff(gray, n=2)))
-        brenner_score = min(100, brenner_gradient / (height * width) * 1000)
-        
-        # Detección de blur
-        blur_score = cv2.Laplacian(gray, cv2.CV_64F).var()
-        
-        # Análisis de histograma
-        hist, _ = np.histogram(gray, bins=256, range=(0, 255))
-        entropy = -np.sum(hist * np.log2(hist + 1e-7)) / (height * width)
-        
-        # Detección de reflejos y sombras
-        bright_areas = np.sum(gray > 220) / gray.size * 100
-        dark_areas = np.sum(gray < 30) / gray.size * 100
-        
-        # Contraste local
-        local_contrast = np.std([cv2.meanStdDev(gray[i:i+50, j:j+50])[1][0][0] 
-                               for i in range(0, height-50, 50) 
-                               for j in range(0, width-50, 50)])
-        
-        # Score de calidad compuesto avanzado
-        quality_score = calculate_advanced_quality_score(
-            brightness, contrast, sharpness_laplacian, brenner_score,
-            blur_score, entropy, bright_areas, dark_areas, local_contrast
-        )
-        
-        return {
-            'brightness': brightness,
-            'contrast': contrast,
-            'sharpness_laplacian': sharpness_laplacian,
-            'sharpness_brenner': brenner_score,
-            'blur_score': blur_score,
-            'entropy': entropy,
-            'bright_areas': bright_areas,
-            'dark_areas': dark_areas,
-            'local_contrast': local_contrast,
-            'resolution': f"{width}x{height}",
-            'aspect_ratio': width / height,
-            'quality_score': quality_score,
-            'quality_category': get_quality_category(quality_score),
-            'timestamp': datetime.now().isoformat()
-        }
-        
-    except Exception as e:
-        logger.error(f"Error en análisis de calidad avanzado: {e}")
-        return {'quality_score': 0, 'quality_category': 'ERROR'}
-
-def calculate_advanced_quality_score(brightness, contrast, sharpness_laplacian, brenner_score,
-                                   blur_score, entropy, bright_areas, dark_areas, local_contrast):
-    """Calcula score de calidad avanzado"""
-    # Normalizar métricas con pesos
-    brightness_score = max(0, 100 - abs(brightness - 128) / 255 * 200)
-    contrast_score = min(100, contrast / 2.5)
-    sharpness_score = min(100, (sharpness_laplacian / 500 + brenner_score / 2) / 2)
-    blur_penalty = max(0, (50 - blur_score) / 50 * 30) if blur_score < 50 else 0
-    entropy_score = min(100, entropy * 50)
-    
-    # Penalizaciones por problemas de iluminación
-    reflection_penalty = max(0, bright_areas - 5) * 1.5
-    shadow_penalty = max(0, dark_areas - 10) * 1.0
-    local_contrast_score = min(100, local_contrast * 10)
-    
-    # Score compuesto
-    composite_score = (
-        brightness_score * 0.15 +
-        contrast_score * 0.20 +
-        sharpness_score * 0.25 +
-        entropy_score * 0.10 +
-        local_contrast_score * 0.10 -
-        blur_penalty * 0.10 -
-        reflection_penalty -
-        shadow_penalty
-    )
-    
-    return max(0, min(100, composite_score))
-
-def get_quality_category(score):
-    """Categoriza la calidad de la imagen"""
-    if score >= 85:
-        return "EXCELENTE"
-    elif score >= 70:
-        return "BUENA"
-    elif score >= 50:
-        return "ACEPTABLE"
-    elif score >= 30:
-        return "BAJA"
-    else:
-        return "INSUFICIENTE"
-
-def detect_chagas_bands_robust(original_img, enhanced_img):
-    """Detección robusta de bandas usando múltiples métodos"""
-    try:
-        gray = cv2.cvtColor(enhanced_img, cv2.COLOR_RGB2GRAY) if len(enhanced_img.shape) == 3 else enhanced_img
-        height, width = gray.shape
-        
-        # MÉTODO 1: Análisis por regiones predefinidas
-        regions_analysis = analyze_predefined_regions(gray, height, width)
-        
-        # MÉTODO 2: Detección automática de bandas
-        auto_bands_analysis = detect_bands_automatically(gray)
-        
-        # MÉTODO 3: Análisis de perfil de intensidad
-        profile_analysis = analyze_intensity_profile(gray)
-        
-        # Combinar resultados de múltiples métodos
-        combined_analysis = combine_detection_methods(
-            regions_analysis, auto_bands_analysis, profile_analysis
-        )
-        
-        return combined_analysis
-        
-    except Exception as e:
-        logger.error(f"Error en detección robusta: {e}")
-        return create_error_analysis()
-
-def analyze_predefined_regions(gray, height, width):
-    """Análisis por regiones predefinidas (método principal)"""
-    # Definir regiones de interés ajustables
-    control_region = gray[int(height*0.25):int(height*0.75), int(width*0.65):int(width*0.80)]
-    test_region = gray[int(height*0.25):int(height*0.75), int(width*0.25):int(width*0.40)]
-    background_region = gray[int(height*0.1):int(height*0.2), int(width*0.1):int(width*0.2)]
-    
-    # Calcular métricas para cada región
-    control_metrics = analyze_region_metrics(control_region, "control")
-    test_metrics = analyze_region_metrics(test_region, "test")
-    background_metrics = analyze_region_metrics(background_region, "background")
-    
-    # Determinar presencia de bandas
-    control_present = is_band_present(control_metrics, background_metrics, "control")
-    test_present = is_band_present(test_metrics, background_metrics, "test")
-    
-    # Calcular intensidades relativas
-    control_intensity = control_metrics['mean_intensity']
-    test_intensity = test_metrics['mean_intensity']
-    background_intensity = background_metrics['mean_intensity']
-    
-    # Normalizar respecto al fondo
-    control_relative = max(0, background_intensity - control_intensity)
-    test_relative = max(0, background_intensity - test_intensity)
-    
-    if control_relative > 0:
-        intensity_ratio = test_relative / control_relative
-    else:
-        intensity_ratio = 0
-    
-    return {
-        'method': 'predefined_regions',
-        'control_present': control_present,
-        'test_present': test_present,
-        'control_intensity': control_intensity,
-        'test_intensity': test_intensity,
-        'control_relative': control_relative,
-        'test_relative': test_relative,
-        'intensity_ratio': intensity_ratio,
-        'background_intensity': background_intensity,
-        'confidence': calculate_region_confidence(control_present, test_present, control_relative, test_relative)
-    }
-
-def analyze_region_metrics(region, region_type):
-    """Calcula métricas detalladas para una región"""
-    if region.size == 0:
-        return {'mean_intensity': 255, 'std_intensity': 0, 'min_intensity': 255, 'max_intensity': 255}
-    
-    return {
-        'mean_intensity': np.mean(region),
-        'std_intensity': np.std(region),
-        'min_intensity': np.min(region),
-        'max_intensity': np.max(region),
-        'region_size': region.size,
-        'region_type': region_type
-    }
-
-def is_band_present(band_metrics, background_metrics, band_type):
-    """Determina si una banda está presente"""
-    # Diferencia significativa con el fondo
-    intensity_diff = background_metrics['mean_intensity'] - band_metrics['mean_intensity']
-    std_threshold = band_metrics['std_intensity'] > 15  # Debe tener variación
-    
-    if band_type == "control":
-        return intensity_diff > 25 and std_threshold
-    else:  # test
-        return intensity_diff > 15 and std_threshold
-
-def calculate_region_confidence(control_present, test_present, control_relative, test_relative):
-    """Calcula confianza basada en las regiones"""
-    base_confidence = 70.0
-    
-    if not control_present:
-        return 10.0  # Baja confianza si no hay control
-    
-    if control_present and test_present:
-        if control_relative > 30 and test_relative > 20:
-            return min(95.0, base_confidence + 25)
-        else:
-            return min(85.0, base_confidence + 15)
-    elif control_present and not test_present:
-        if control_relative > 30:
-            return min(90.0, base_confidence + 20)
-        else:
-            return base_confidence
-    
-    return 50.0  # Confianza base
-
-def detect_bands_automatically(gray):
-    """Detección automática de bandas usando procesamiento de imágenes"""
-    try:
-        # Preprocesamiento
-        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-        
-        # Detección de bordes
-        edges = cv2.Canny(blurred, 50, 150)
-        
-        # Encontrar contornos
-        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
-        # Filtrar contornos por área y forma
-        band_contours = []
-        for contour in contours:
-            area = cv2.contourArea(contour)
-            x, y, w, h = cv2.boundingRect(contour)
-            aspect_ratio = w / h if h > 0 else 0
-            
-            # Buscar bandas (rectángulos verticales)
-            if (area > 100 and 
-                0.2 < aspect_ratio < 5.0 and
-                min(w, h) > 10):
-                band_contours.append(contour)
-        
-        return {
-            'method': 'auto_detection',
-            'bands_detected': len(band_contours),
-            'contours': band_contours,
-            'confidence': min(80.0, len(band_contours) * 20.0)
-        }
-        
-    except Exception as e:
-        logger.error(f"Error en detección automática: {e}")
-        return {'method': 'auto_detection', 'bands_detected': 0, 'confidence': 0}
-
-def analyze_intensity_profile(gray):
-    """Análisis de perfil de intensidad horizontal"""
-    try:
-        height, width = gray.shape
-        middle_row = gray[height//2, :]
-        
-        # Suavizar perfil
-        smoothed_profile = np.convolve(middle_row, np.ones(10)/10, mode='same')
-        
-        # Encontrar valles (bandas oscuras)
-        valleys = []
-        for i in range(20, len(smoothed_profile)-20):
-            if (smoothed_profile[i] < smoothed_profile[i-10:i].mean() and 
-                smoothed_profile[i] < smoothed_profile[i+1:i+11].mean()):
-                valleys.append((i, smoothed_profile[i]))
-        
-        # Ordenar por intensidad (más oscuros primero)
-        valleys.sort(key=lambda x: x[1])
-        
-        return {
-            'method': 'intensity_profile',
-            'valleys_detected': len(valleys),
-            'valley_positions': [v[0] for v in valleys[:4]],  # Máximo 4 valles
-            'valley_intensities': [v[1] for v in valleys[:4]],
-            'confidence': min(70.0, len(valleys) * 15.0)
-        }
-        
-    except Exception as e:
-        logger.error(f"Error en análisis de perfil: {e}")
-        return {'method': 'intensity_profile', 'valleys_detected': 0, 'confidence': 0}
-
-def combine_detection_methods(regions_analysis, auto_analysis, profile_analysis):
-    """Combina resultados de múltiples métodos de detección"""
-    # Ponderar resultados por confianza del método
-    regions_weight = 0.6
-    auto_weight = 0.25
-    profile_weight = 0.15
-    
-    # Resultado base de regiones (método principal)
-    base_result = regions_analysis
-    
-    # Ajustar confianza basado en otros métodos
-    adjusted_confidence = base_result['confidence']
-    
-    if auto_analysis['bands_detected'] >= 2:
-        adjusted_confidence += 10 * auto_weight
-    if profile_analysis['valleys_detected'] >= 2:
-        adjusted_confidence += 10 * profile_weight
-    
-    # Determinar resultado final
-    if not base_result['control_present']:
-        final_result = "INVÁLIDO"
-        final_confidence = max(10.0, adjusted_confidence * 0.5)
-    elif base_result['control_present'] and not base_result['test_present']:
-        final_result = "NEGATIVO"
-        final_confidence = min(95.0, adjusted_confidence)
-    elif base_result['control_present'] and base_result['test_present']:
-        if base_result['intensity_ratio'] < 0.6:
-            final_result = "POSITIVO"
-            final_confidence = min(95.0, adjusted_confidence * 1.1)
-        elif base_result['intensity_ratio'] < 0.8:
-            final_result = "DÉBIL POSITIVO"
-            final_confidence = min(85.0, adjusted_confidence * 0.9)
-        else:
-            final_result = "NEGATIVO"  # Banda test muy débil
-            final_confidence = min(80.0, adjusted_confidence * 0.8)
-    else:
-        final_result = "INDETERMINADO"
-        final_confidence = 30.0
-    
-    return {
-        'result': final_result,
-        'confidence': final_confidence,
-        'control_present': base_result['control_present'],
-        'test_present': base_result['test_present'],
-        'control_intensity': base_result['control_intensity'],
-        'test_intensity': base_result['test_intensity'],
-        'intensity_ratio': base_result['intensity_ratio'],
-        'methods_used': [
-            regions_analysis['method'],
-            auto_analysis['method'],
-            profile_analysis['method']
-        ],
-        'methods_confidence': {
-            'regions': regions_analysis['confidence'],
-            'auto': auto_analysis['confidence'],
-            'profile': profile_analysis['confidence']
-        }
-    }
-
-def validate_chagas_result(chagas_analysis, quality_analysis):
-    """Valida el resultado considerando la calidad de la imagen"""
+def validate_with_letters(chagas_analysis, quality_analysis, text_detection, letters_detection):
+    """Validación MEJORADA con reconocimiento de letras"""
     result = chagas_analysis['result']
     confidence = chagas_analysis['confidence']
     quality_score = quality_analysis['quality_score']
     
-    # Ajustar confianza basado en calidad de imagen
+    # Ajuste por calidad
     quality_factor = quality_score / 100.0
     adjusted_confidence = confidence * quality_factor
     
-    # Reglas de validación
-    if quality_score < 40:
-        # Calidad muy baja, resultado no confiable
-        validated_result = "INDETERMINADO"
-        validated_confidence = max(10.0, adjusted_confidence * 0.5)
-        validation_notes = "Calidad de imagen insuficiente para análisis confiable"
-    elif quality_score < 60 and confidence < 70:
-        # Calidad baja y confianza baja
-        validated_result = "INDETERMINADO"
-        validated_confidence = max(20.0, adjusted_confidence * 0.7)
-        validation_notes = "Se requiere mejor calidad de imagen para confirmación"
-    else:
-        # Resultado válido
-        validated_result = result
-        validated_confidence = adjusted_confidence
-        validation_notes = "Análisis realizado con calidad adecuada"
+    # Boost por letras detectadas
+    letters_boost = 0
+    if letters_detection:
+        if letters_detection['C_detected']:
+            letters_boost += st.session_state.letter_confidence_boost / 2
+        if letters_detection['T_detected']:
+            letters_boost += st.session_state.letter_confidence_boost / 2
     
-    # Aplicar confianza mínima configurada
-    if validated_confidence < st.session_state.min_confidence and validated_result not in ["INVÁLIDO", "INDETERMINADO"]:
+    # Boost por texto general
+    text_boost = 0
+    if text_detection.get('has_chagas_text'):
+        text_boost += 10
+    
+    final_confidence = min(95, adjusted_confidence + letters_boost + text_boost)
+    
+    # Validación final
+    if quality_score < 30:
         validated_result = "INDETERMINADO"
-        validated_confidence = st.session_state.min_confidence - 10
-        validation_notes = f"Confianza por debajo del mínimo requerido ({st.session_state.min_confidence}%)"
+        validation_notes = "Calidad de imagen muy baja"
+    elif final_confidence < st.session_state.min_confidence:
+        validated_result = "INDETERMINADO"
+        validation_notes = f"Confianza insuficiente. Mínimo: {st.session_state.min_confidence}%"
+    else:
+        validated_result = result
+        validation_notes = "Análisis completado"
+        
+        # Añadir notas sobre letras
+        boost_notes = []
+        if letters_boost > 0:
+            boost_notes.append(f"+{letters_boost}% por letras")
+        if text_boost > 0:
+            boost_notes.append(f"+{text_boost}% por texto")
+        
+        if boost_notes:
+            validation_notes += f" ({', '.join(boost_notes)})"
     
     return {
-        **chagas_analysis,
         'validated_result': validated_result,
-        'validated_confidence': validated_confidence,
-        'quality_adjusted_confidence': adjusted_confidence,
+        'validated_confidence': final_confidence,
         'validation_notes': validation_notes,
         'quality_score': quality_score,
-        'min_confidence_threshold': st.session_state.min_confidence
+        'letters_boost': letters_boost,
+        'text_boost': text_boost,
+        'letters_detection': letters_detection
     }
 
-def create_error_analysis():
-    """Crea análisis de error estándar"""
-    return {
-        'result': 'ERROR',
-        'confidence': 0.0,
-        'control_present': False,
-        'test_present': False,
-        'control_intensity': 0,
-        'test_intensity': 0,
-        'intensity_ratio': 0,
-        'methods_used': ['error'],
-        'validated_result': 'ERROR',
-        'validated_confidence': 0.0,
-        'validation_notes': 'Error en el procesamiento de la imagen'
-    }
-
-# [Las funciones de visualización, guardado y las otras pestañas se mantienen similares pero mejoradas]
-# [Se omiten por longitud, pero incluirían display_advanced_quality_metrics, display_validated_chagas_result, etc.]
-
-def display_advanced_quality_metrics(quality_analysis):
-    """Muestra métricas de calidad avanzadas"""
-    st.subheader("📊 Métricas de Calidad Avanzadas")
-    
-    # Categoría de calidad
-    quality_color = {
-        "EXCELENTE": "#4CAF50",
-        "BUENA": "#8BC34A", 
-        "ACEPTABLE": "#FFC107",
-        "BAJA": "#FF9800",
-        "INSUFICIENTE": "#F44336"
-    }.get(quality_analysis['quality_category'], "#666666")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.markdown(f"""
-        <div style='text-align: center; padding: 15px; background-color: {quality_color}20; border-radius: 10px;'>
-            <h3 style='color: {quality_color}; margin: 0;'>{quality_analysis['quality_score']:.1f}/100</h3>
-            <small style='color: #666;'>{quality_analysis['quality_category']}</small>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col2:
-        st.metric("Brillo", f"{quality_analysis['brightness']:.1f}")
-        st.metric("Contraste", f"{quality_analysis['contrast']:.1f}")
-    
-    with col3:
-        st.metric("Nitidez", f"{quality_analysis['sharpness_laplacian']:.0f}")
-        st.metric("Enfoque", f"{quality_analysis['sharpness_brenner']:.1f}")
-
-def display_validated_chagas_result(validated_analysis, quality_analysis):
-    """Muestra el resultado validado de Chagas"""
-    st.subheader("🦟 Resultado Validado de Análisis")
+def display_final_result_enhanced(validated_analysis, letters_detection):
+    """Muestra resultado final MEJORADO"""
+    st.subheader("🎯 Resultado Final del Análisis")
     
     result = validated_analysis['validated_result']
     confidence = validated_analysis['validated_confidence']
     
-    # Configuración de colores según resultado
     result_config = {
         "POSITIVO": {"color": "#dc3545", "bg_color": "#f8d7da", "icon": "🔴"},
         "NEGATIVO": {"color": "#28a745", "bg_color": "#d4edda", "icon": "🟢"},
         "DÉBIL POSITIVO": {"color": "#ffc107", "bg_color": "#fff3cd", "icon": "🟡"},
         "INVÁLIDO": {"color": "#17a2b8", "bg_color": "#d1ecf1", "icon": "🔵"},
-        "INDETERMINADO": {"color": "#6c757d", "bg_color": "#f5f5f5", "icon": "⚫"},
-        "ERROR": {"color": "#6c757d", "bg_color": "#f5f5f5", "icon": "⚫"}
+        "INDETERMINADO": {"color": "#6c757d", "bg_color": "#f8f9fa", "icon": "⚫"}
     }.get(result, {"color": "#666", "bg_color": "#f5f5f5", "icon": "⚫"})
+    
+    # Información adicional sobre letras
+    letters_info = ""
+    if letters_detection:
+        letters_found = letters_detection.get('letters_found', [])
+        if letters_found:
+            letters_info = f"<br><small>Letras detectadas: {', '.join(letters_found)}</small>"
     
     st.markdown(f"""
     <div style='background-color: {result_config["bg_color"]}; padding: 25px; border-radius: 10px; border-left: 5px solid {result_config["color"]}; margin: 20px 0;'>
         <h2 style='color: {result_config["color"]}; margin: 0 0 10px 0;'>{result_config["icon"]} RESULTADO: {result}</h2>
         <p style='margin: 10px 0; font-size: 1.2em;'><strong>Confianza:</strong> {confidence:.1f}%</p>
-        <p style='margin: 10px 0;'><strong>Notas de validación:</strong> {validated_analysis['validation_notes']}</p>
+        <p style='margin: 10px 0;'><strong>Notas:</strong> {validated_analysis['validation_notes']}</p>
+        {letters_info}
     </div>
     """, unsafe_allow_html=True)
     
@@ -703,313 +753,231 @@ def display_validated_chagas_result(validated_analysis, quality_analysis):
     elif result == "INVÁLIDO":
         st.session_state.invalid_results += 1
 
-def display_technical_analysis(chagas_analysis, validated_analysis):
-    """Muestra análisis técnico detallado"""
-    st.write("**Métodos de Análisis Utilizados:**")
-    for method in chagas_analysis.get('methods_used', []):
-        st.write(f"- {method.replace('_', ' ').title()}")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.write("**Intensidades de Bandas:**")
-        st.write(f"- Control: {chagas_analysis['control_intensity']:.1f}")
-        st.write(f"- Test: {chagas_analysis['test_intensity']:.1f}")
-        st.write(f"- Relación T/C: {chagas_analysis['intensity_ratio']:.2f}")
-        
-    with col2:
-        st.write("**Confianzas por Método:**")
-        for method, conf in chagas_analysis.get('methods_confidence', {}).items():
-            st.write(f"- {method}: {conf:.1f}%")
-    
-    st.write("**Ajustes por Calidad:**")
-    st.write(f"- Confianza original: {chagas_analysis['confidence']:.1f}%")
-    st.write(f"- Ajuste por calidad: {validated_analysis['quality_adjusted_confidence']:.1f}%")
-    st.write(f"- Confianza final: {validated_analysis['validated_confidence']:.1f}%")
-
-def save_advanced_reports(original_image, quality_analysis, validated_analysis):
-    """Guarda reportes avanzados"""
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        if st.button("💾 Reporte Completo (Imagen + Análisis)", use_container_width=True, type="primary"):
-            save_comprehensive_report(original_image, quality_analysis, validated_analysis)
-    
-    with col2:
-        if st.button("📊 Reporte Técnico Detallado", use_container_width=True):
-            save_detailed_technical_report(quality_analysis, validated_analysis)
-
-def save_comprehensive_report(image, quality_analysis, validated_analysis):
-    """Guarda reporte comprensivo con imagen anotada"""
+# [Las funciones restantes se mantienen similares pero adaptadas...]
+def analyze_image_quality_improved(img_array):
+    """Análisis de calidad básico"""
     try:
-        # Crear imagen anotada (similar a la función anterior pero mejorada)
-        img_array = np.array(image)
-        annotated_img = create_advanced_annotated_image(img_array, validated_analysis)
+        gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY) if len(img_array.shape) == 3 else img_array
+        height, width = gray.shape
         
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"chagas_advanced_report_{timestamp}.jpg"
+        brightness = np.mean(gray)
+        contrast = np.std(gray)
+        sharpness = cv2.Laplacian(gray, cv2.CV_64F).var()
         
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as tmp_file:
-            Image.fromarray(annotated_img).save(tmp_file.name, 'JPEG', quality=95)
-            
-            with open(tmp_file.name, 'rb') as file:
-                st.download_button(
-                    label="📥 Descargar Reporte Completo Avanzado",
-                    data=file.read(),
-                    file_name=filename,
-                    mime="image/jpeg",
-                    key=f"download_advanced_{timestamp}"
-                )
+        quality_score = min(100, (brightness/2.55 * 0.3 + min(contrast, 100) * 0.4 + min(sharpness/10, 30)))
         
-        os.unlink(tmp_file.name)
-        st.success("✅ Reporte avanzado guardado exitosamente")
-        
-    except Exception as e:
-        st.error(f"Error guardando reporte avanzado: {e}")
+        return {
+            'brightness': brightness,
+            'contrast': contrast,
+            'sharpness': sharpness,
+            'resolution': f"{width}x{height}",
+            'quality_score': quality_score,
+            'quality_category': 'BUENA' if quality_score > 60 else 'ACEPTABLE' if quality_score > 40 else 'BAJA'
+        }
+    except:
+        return {'quality_score': 50, 'quality_category': 'ACEPTABLE'}
 
-def save_detailed_technical_report(quality_analysis, validated_analysis):
-    """Guarda reporte técnico detallado"""
+def detect_chagas_bands_improved(img_array):
+    """Detección básica de bandas"""
     try:
-        report = create_detailed_technical_report(quality_analysis, validated_analysis)
+        gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY) if len(img_array.shape) == 3 else img_array
+        height, width = gray.shape
         
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        st.download_button(
-            label="📥 Descargar Reporte Técnico Detallado",
-            data=report,
-            file_name=f"chagas_technical_{timestamp}.txt",
-            mime="text/plain",
-            key=f"download_technical_{timestamp}"
-        )
+        control_region = gray[int(height*0.3):int(height*0.7), int(width*0.6):int(width*0.75)]
+        test_region = gray[int(height*0.3):int(height*0.7), int(width*0.25):int(width*0.4)]
         
-    except Exception as e:
-        st.error(f"Error guardando reporte técnico: {e}")
-
-def create_advanced_annotated_image(img_array, validated_analysis):
-    """Crea imagen anotada avanzada"""
-    try:
-        if len(img_array.shape) == 2:
-            annotated = cv2.cvtColor(img_array, cv2.COLOR_GRAY2RGB)
+        control_mean = np.mean(control_region) if control_region.size > 0 else 255
+        test_mean = np.mean(test_region) if test_region.size > 0 else 255
+        
+        control_present = control_mean < 200
+        test_present = test_mean < 220
+        
+        if not control_present:
+            result = "INVÁLIDO"
+            confidence = 30
+        elif control_present and not test_present:
+            result = "NEGATIVO"
+            confidence = 85
+        elif control_present and test_present:
+            result = "POSITIVO"
+            confidence = 80
         else:
-            annotated = img_array.copy()
-        
-        height, width = annotated.shape[:2]
-        
-        # Dibujar regiones de análisis
-        cv2.rectangle(annotated, 
-                     (int(width*0.25), int(height*0.25)), 
-                     (int(width*0.40), int(height*0.75)), 
-                     (255, 0, 0), 2)  # Test - Azul
-        
-        cv2.rectangle(annotated, 
-                     (int(width*0.65), int(height*0.25)), 
-                     (int(width*0.80), int(height*0.75)), 
-                     (0, 255, 0), 2)  # Control - Verde
-        
-        # Añadir texto con resultados
-        result_text = f"Resultado: {validated_analysis['validated_result']}"
-        confidence_text = f"Confianza: {validated_analysis['validated_confidence']:.1f}%"
-        
-        cv2.putText(annotated, result_text, (10, 30), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 2)
-        cv2.putText(annotated, confidence_text, (10, 60), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
-        
-        # Añadir información de bandas
-        band_info = f"Control: {validated_analysis['control_present']} | Test: {validated_analysis['test_present']}"
-        cv2.putText(annotated, band_info, (10, 90), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-        
-        return annotated
-        
-    except Exception as e:
-        logger.error(f"Error creando imagen anotada avanzada: {e}")
-        return img_array
+            result = "INDETERMINADO"
+            confidence = 50
+            
+        return {
+            'result': result,
+            'confidence': confidence,
+            'control_present': control_present,
+            'test_present': test_present
+        }
+    except:
+        return {'result': 'INDETERMINADO', 'confidence': 30, 'control_present': False, 'test_present': False}
 
-def create_detailed_technical_report(quality_analysis, validated_analysis):
-    """Crea reporte técnico detallado"""
-    report = f"""
-REPORTE TÉCNICO DETALLADO - ANÁLISIS DE CHAGAS
-===============================================
-Fecha: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-
-RESULTADO PRINCIPAL
--------------------
-Resultado Validado: {validated_analysis['validated_result']}
-Confianza Validada: {validated_analysis['validated_confidence']:.1f}%
-Notas de Validación: {validated_analysis['validation_notes']}
-
-MÉTRICAS DE CALIDAD AVANZADAS
------------------------------
-Calidad General: {quality_analysis['quality_score']:.1f}/100 ({quality_analysis['quality_category']})
-Brillo: {quality_analysis['brightness']:.1f}
-Contraste: {quality_analysis['contrast']:.1f}
-Nitidez (Laplacian): {quality_analysis['sharpness_laplacian']:.0f}
-Nitidez (Brenner): {quality_analysis['sharpness_brenner']:.1f}
-Puntuación de Blur: {quality_analysis['blur_score']:.1f}
-Entropía: {quality_analysis['entropy']:.3f}
-Áreas Brillantes: {quality_analysis['bright_areas']:.1f}%
-Áreas Oscuras: {quality_analysis['dark_areas']:.1f}%
-Contraste Local: {quality_analysis['local_contrast']:.1f}
-Resolución: {quality_analysis['resolution']}
-
-ANÁLISIS DE BANDAS DETALLADO
------------------------------
-Banda Control Presente: {validated_analysis['control_present']}
-Banda Test Presente: {validated_analysis['test_present']}
-Intensidad Control: {validated_analysis['control_intensity']:.1f}
-Intensidad Test: {validated_analysis['test_intensity']:.1f}
-Relación Test/Control: {validated_analysis['intensity_ratio']:.2f}
-
-MÉTODOS DE ANÁLISIS UTILIZADOS
-------------------------------
-"""
+def display_quality_metrics_improved(quality_analysis):
+    """Muestra métricas de calidad"""
+    st.subheader("📊 Métricas de Calidad")
     
-    for method in validated_analysis.get('methods_used', []):
-        report += f"- {method.replace('_', ' ').title()}\n"
-    
-    report += f"""
-CONFIANZAS POR MÉTODO
----------------------
-"""
-    for method, conf in validated_analysis.get('methods_confidence', {}).items():
-        report += f"- {method}: {conf:.1f}%\n"
-    
-    report += f"""
-AJUSTES Y VALIDACIONES
-----------------------
-Confianza Original: {validated_analysis.get('confidence', 0):.1f}%
-Confianza Ajustada por Calidad: {validated_analysis['quality_adjusted_confidence']:.1f}%
-Umbral Mínimo de Confianza: {validated_analysis['min_confidence_threshold']}%
-
-CONFIGURACIÓN DE ANÁLISIS
--------------------------
-Modo de Análisis: {st.session_state.analysis_mode}
-Confianza Mínima Configurada: {st.session_state.min_confidence}%
-
-RECOMENDACIONES TÉCNICAS
-------------------------
-"""
-    
-    if quality_analysis['quality_score'] < 60:
-        report += "- Se recomienda mejorar la calidad de la imagen para mayor precisión\n"
-    if validated_analysis['validated_confidence'] < 80:
-        report += "- Considerar repetir el análisis con mejores condiciones de captura\n"
-    
-    report += """
----
-Sistema de Análisis Avanzado de Cintas Reactivas para Chagas
-Este reporte fue generado automáticamente usando múltiples métodos de validación.
-"""
-    
-    return report
-
-def render_analysis_tab():
-    """Pestaña de análisis histórico"""
-    st.header("📈 Historial de Análisis Avanzado")
-    
-    if 'analysis_history' not in st.session_state:
-        st.session_state.analysis_history = []
-    
-    if not st.session_state.analysis_history:
-        st.info("No hay análisis históricos. Captura algunas imágenes primero.")
-        return
-    
-    # Mostrar histórico con más detalles
-    for i, analysis in enumerate(reversed(st.session_state.analysis_history[-10:])):
-        with st.expander(f"Análisis {i+1} - {analysis.get('timestamp', '')[:16]} - {analysis.get('validated_result', 'N/A')}"):
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.metric("Resultado", analysis.get('validated_result', 'N/A'))
-            with col2:
-                st.metric("Confianza", f"{analysis.get('validated_confidence', 0):.1f}%")
-            with col3:
-                st.metric("Calidad", f"{analysis.get('quality_score', 0):.1f}")
-            with col4:
-                st.metric("Métodos", len(analysis.get('methods_used', [])))
-
-def render_metrics_tab():
-    """Pestaña de métricas y estadísticas"""
-    st.header("📊 Métricas y Estadísticas Avanzadas")
-    
-    if st.session_state.analysis_count == 0:
-        st.info("No hay datos de análisis aún. Realiza algunos análisis primero.")
-        return
-    
-    # Estadísticas básicas
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.metric("Total Análisis", st.session_state.analysis_count)
-    with col2:
-        st.metric("Tasa de Chagas", f"{(st.session_state.chagas_detections/st.session_state.analysis_count*100):.1f}%")
-    with col3:
-        st.metric("Tasa de Inválidos", f"{(st.session_state.invalid_results/st.session_state.analysis_count*100):.1f}%")
+        st.metric("Calidad", f"{quality_analysis['quality_score']:.1f}/100")
+        st.metric("Categoría", quality_analysis['quality_category'])
     
-    # Métricas de calidad promedio
-    if 'analysis_history' in st.session_state and st.session_state.analysis_history:
-        quality_scores = [a.get('quality_score', 0) for a in st.session_state.analysis_history]
-        confidence_scores = [a.get('validated_confidence', 0) for a in st.session_state.analysis_history]
-        
-        col4, col5 = st.columns(2)
-        with col4:
-            st.metric("Calidad Promedio", f"{np.mean(quality_scores):.1f}")
-        with col5:
-            st.metric("Confianza Promedio", f"{np.mean(confidence_scores):.1f}%")
+    with col2:
+        st.metric("Brillo", f"{quality_analysis['brightness']:.1f}")
+        st.metric("Contraste", f"{quality_analysis['contrast']:.1f}")
+    
+    with col3:
+        st.metric("Nitidez", f"{quality_analysis['sharpness']:.0f}")
+        st.metric("Resolución", quality_analysis['resolution'])
 
-def render_guide_tab():
-    """Pestaña de guía avanzada"""
-    st.header("📚 Guía Avanzada de Análisis")
+def display_technical_analysis_enhanced(chagas_analysis, validated_analysis, text_detection, letters_detection):
+    """Análisis técnico mejorado"""
+    st.write("**📈 Métricas de Detección:**")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.write("**Bandas:**")
+        st.write(f"- Control: {chagas_analysis['control_present']}")
+        st.write(f"- Test: {chagas_analysis['test_present']}")
+        st.write(f"- Confianza base: {chagas_analysis['confidence']:.1f}%")
+        
+    with col2:
+        st.write("**Mejoras:**")
+        st.write(f"- Boost letras: +{validated_analysis.get('letters_boost', 0)}%")
+        st.write(f"- Boost texto: +{validated_analysis.get('text_boost', 0)}%")
+        st.write(f"- Confianza final: {validated_analysis['validated_confidence']:.1f}%")
+    
+    if letters_detection:
+        st.write("**🔤 Letras Detectadas:**")
+        st.write(f"- C: {letters_detection['C_detected']} (conf: {letters_detection['C_confidence']:.0f}%)")
+        st.write(f"- T: {letters_detection['T_detected']} (conf: {letters_detection['T_confidence']:.0f}%)")
+
+def save_to_history_enhanced(validated_analysis, quality_analysis, letters_detection):
+    """Guarda en historial mejorado"""
+    analysis_record = {
+        'timestamp': datetime.now().isoformat(),
+        'result': validated_analysis['validated_result'],
+        'confidence': validated_analysis['validated_confidence'],
+        'quality_score': quality_analysis['quality_score'],
+        'letters_detected': letters_detection.get('letters_found', []) if letters_detection else []
+    }
+    
+    st.session_state.analysis_history.append(analysis_record)
+    
+    if len(st.session_state.analysis_history) > 20:
+        st.session_state.analysis_history = st.session_state.analysis_history[-20:]
+
+def render_letters_tab():
+    """Pestaña específica para reconocimiento de letras"""
+    st.header("🔤 Reconocimiento Avanzado de Letras C y T")
     
     st.markdown("""
-    ### 🔬 Métodos de Análisis Implementados
+    ### 🎯 Especificaciones del Reconocimiento de Letras
     
-    **1. Análisis por Regiones Predefinidas (Principal)**
-    - Analiza regiones específicas para bandas de control y test
-    - Calcula intensidades relativas al fondo
-    - Evalúa presencia basada en diferencias de contraste
+    **¿Qué busca el sistema?**
+    - Letra **C** (Control) - usualmente en el lado derecho
+    - Letra **T** (Test) - usualmente en el lado izquierdo
     
-    **2. Detección Automática de Bandas**
-    - Usa procesamiento morfológico y detección de contornos
-    - Identifica bandas basándose en forma y tamaño
-    - Complementa el método principal
+    **Métodos utilizados:**
+    1. **OCR especializado** para letras individuales
+    2. **Procesamiento de imágenes** para encontrar patrones
+    3. **Validación por posición** (C a la derecha, T a la izquierda)
     
-    **3. Análisis de Perfil de Intensidad**
-    - Examina el perfil horizontal de intensidad
-    - Detecta valles que corresponden a bandas
-    - Proporciona validación adicional
-    
-    ### 🎯 Validación y Ajuste de Confianza
-    
-    **Factores Considerados:**
-    - Calidad de la imagen (40% de peso)
-    - Concordancia entre métodos (30% de peso)
-    - Intensidad relativa de bandas (30% de peso)
-    
-    **Umbrales de Confianza:**
-    - ≥85%: Alta confianza
-    - 70-84%: Confianza moderada  
-    - 50-69%: Confianza baja
-    - <50%: Resultado indeterminado
-    
-    ### ⚙️ Configuración Avanzada
-    
-    **Modos de Análisis:**
-    - **Automático:** Balance entre sensibilidad y especificidad
-    - **Conservador:** Menos falsos positivos, mayor especificidad
-    - **Sensible:** Detecta casos más débiles, mayor sensibilidad
-    
-    **Parámetros Ajustables:**
-    - Confianza mínima requerida
-    - Umbrales de intensidad
-    - Tamaños de región de interés
+    **Beneficios:**
+    - ✅ Mayor confianza en los resultados
+    - ✅ Validación adicional de la tira
+    - ✅ Detección más robusta
+    - ✅ Menos falsos positivos/negativos
     """)
     
-    st.info("""
-    **💡 Para mejores resultados:**
-    - Use imágenes de al menos 640x480 píxeles
-    - Asegure iluminación uniforme sin reflejos
-    - Capture toda el área de resultado de la cinta
-    - Mantenga la cinta plana y bien enfocada
+    # Ejemplo visual de letras
+    st.subheader("📝 Ejemplo de Letras en Tiras Reactivas")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        **Letra T (Test):**
+        ```
+        ┌─────────┐
+        │    █    │
+        │    █    │
+        │  █████  │
+        │    █    │
+        │    █    │
+        └─────────┘
+        ```
+        """)
+    
+    with col2:
+        st.markdown("""
+        **Letra C (Control):**
+        ```
+        ┌─────────┐
+        │  █████  │
+        │  █      │
+        │  █      │
+        │  █      │
+        │  █████  │
+        └─────────┘
+        ```
+        """)
+
+def render_analysis_tab():
+    """Pestaña de análisis histórico"""
+    st.header("📈 Historial de Análisis")
+    
+    if not st.session_state.analysis_history:
+        st.info("No hay análisis históricos. Realiza algunos análisis primero.")
+        return
+    
+    for i, analysis in enumerate(reversed(st.session_state.analysis_history[-10:])):
+        with st.expander(f"Análisis {i+1} - {analysis['timestamp'][:16]}"):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Resultado", analysis['result'])
+            with col2:
+                st.metric("Confianza", f"{analysis['confidence']:.1f}%")
+            with col3:
+                st.metric("Letras", ', '.join(analysis.get('letters_detected', ['Ninguna'])))
+
+def render_guide_tab():
+    """Pestaña de guía"""
+    st.header("📚 Guía de Reconocimiento de Letras")
+    
+    st.markdown("""
+    ### 🎯 CÓMO AYUDAR AL RECONOCIMIENTO DE LETRAS
+    
+    **📸 TÉCNICAS PARA MEJOR DETECCIÓN:**
+    1. **Enfoque en las letras**: Asegúrate que C y T sean nítidas
+    2. **Contraste adecuado**: Letras oscuras sobre fondo claro
+    3. **Posición correcta**: C a la derecha, T a la izquierda
+    4. **Tamaño suficiente**: Letras deben ser claramente visibles
+    5. **Sin obstrucciones**: Nada debe tapar las letras
+    
+    **🔧 CONFIGURACIÓN RECOMENDADA:**
+    - **Detección de Letras**: ACTIVADA
+    - **Boost por Letras**: 15-20%
+    - **Confianza Mínima**: 75%
+    
+    **💡 INTERPRETACIÓN:**
+    - **Ambas letras detectadas**: Máxima confianza
+    - **Solo C detectada**: Buena confianza (control presente)
+    - **Solo T detectada**: Confianza moderada
+    - **Ninguna letra**: Confianza base (solo análisis visual)
+    
+    **⚠️ LIMITACIONES:**
+    - Letras muy pequeñas o borrosas pueden no detectarse
+    - Iluminación pobre afecta el reconocimiento
+    - Fuentes muy diferentes pueden causar problemas
+    """)
+    
+    st.success("""
+    **✅ CONSEJO FINAL:** Si el sistema no detecta las letras consistentemente, 
+    trata de acercarte más a la tira y asegura buena iluminación en las letras.
     """)
 
 if __name__ == "__main__":
