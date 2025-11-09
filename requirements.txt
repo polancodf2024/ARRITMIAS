@@ -11,3 +11,4 @@ plotly>=5.15.0
 pydicom>=2.4.0
 scikit-image>=0.21.0
 neurokit2>=0.2.4
+pyedflib>=0.1.31
