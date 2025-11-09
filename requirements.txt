@@ -14,3 +14,4 @@ neurokit2>=0.2.4
 pyedflib>=0.1.29
 scikit-learn>=1.2.0
 joblib>=1.2.0
+psutil==5.9.5
