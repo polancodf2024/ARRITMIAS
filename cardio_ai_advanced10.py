@@ -1326,7 +1326,7 @@ class AdvancedArrhythmiaDetector:
                 rpeaks = info['ECG_R_Peaks']
             except:
                 # Fallback a método más simple
-                rpeaks, info = nk.ecg_peaks(ecg_cleaned, sampling_rate=sam_rate, method='neurokit')
+                rpeaks, info = nk.ecg_peaks(ecg_cleaned, sampling_rate=sampling_rate, method='neurokit')
                 rpeaks = info['ECG_R_Peaks']
             
             if len(rpeaks) < 4:
@@ -1891,113 +1891,45 @@ class ECGAppInterface:
     
     def setup_page(self):
         """Configurar la página principal mejorada"""
-        # CSS personalizado mejorado
-        st.markdown("""
-        <style>
-        .main-header {
-            font-size: 3rem;
-            color: #1f77b4;
-            text-align: center;
-            margin-bottom: 2rem;
-            font-weight: bold;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
-        }
-        .sub-header {
-            font-size: 1.5rem;
-            color: #2e86ab;
-            margin: 1rem 0;
-            font-weight: 600;
-        }
-        .info-box {
-            background-color: #f0f8ff;
-            padding: 1.5rem;
-            border-radius: 10px;
-            border-left: 5px solid #1f77b4;
-            margin: 1rem 0;
-        }
-        .warning-box {
-            background-color: #fff3cd;
-            padding: 1rem;
-            border-radius: 10px;
-            border-left: 5px solid #ffc107;
-            margin: 1rem 0;
-        }
-        .success-box {
-            background-color: #d4edda;
-            padding: 1rem;
-            border-radius: 10px;
-            border-left: 5px solid #28a745;
-            margin: 1rem 0;
-        }
-        .critical-box {
-            background-color: #f8d7da;
-            padding: 1.5rem;
-            border-radius: 10px;
-            border-left: 5px solid #dc3545;
-            margin: 1rem 0;
-            animation: pulse 2s infinite;
-        }
-        .metric-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 1.5rem;
-            border-radius: 15px;
-            color: white;
-            text-align: center;
-            margin: 0.5rem;
-        }
-        @keyframes pulse {
-            0% { border-left-color: #dc3545; }
-            50% { border-left-color: #ff6b7a; }
-            100% { border-left-color: #dc3545; }
-        }
-        </style>
-        """, unsafe_allow_html=True)
-        
-        # Header principal mejorada
-        st.markdown('<h1 class="main-header">❤️ CardioAI Advanced Pro</h1>', unsafe_allow_html=True)
-        st.markdown('<p style="text-align: center; font-size: 1.2rem; color: #555;">Sistema Inteligente de Análisis ECG con Deep Learning y Validación Clínica</p>', unsafe_allow_html=True)
+        # Header principal
+        st.title("❤️ CardioAI Advanced Pro")
+        st.subheader("Sistema Inteligente de Análisis ECG con Deep Learning y Validación Clínica")
         
         # Información de la aplicación
         with st.expander("ℹ️ Información de la Aplicación", expanded=False):
             col1, col2, col3 = st.columns(3)
             
             with col1:
-                st.markdown("### 🎯 Funcionalidades Avanzadas")
-                st.markdown("""
-                - 📊 Análisis comprehensivo de ECG
-                - 🧠 Modelos Deep Learning avanzados
-                - ⚡ Procesamiento en tiempo real
-                - 📈 Visualizaciones interactivas
-                - 🔍 Detección de arritmias complejas
-                - 🚨 Sistema de alertas clínicas
-                - 📋 Validación con criterios clínicos
-                """)
+                st.write("### 🎯 Funcionalidades Avanzadas")
+                st.write("- 📊 Análisis comprehensivo de ECG")
+                st.write("- 🧠 Modelos Deep Learning avanzados")
+                st.write("- ⚡ Procesamiento en tiempo real")
+                st.write("- 📈 Visualizaciones interactivas")
+                st.write("- 🔍 Detección de arritmias complejas")
+                st.write("- 🚨 Sistema de alertas clínicas")
+                st.write("- 📋 Validación con criterios clínicos")
             
             with col2:
-                st.markdown("### 📁 Formatos Soportados")
-                st.markdown("""
-                - EDF/EDF+ (Europeo)
-                - BDF (Biosemi)
-                - Binario personalizado
-                - RAW (Datos crudos)
-                - Auto-detección inteligente
-                """)
+                st.write("### 📁 Formatos Soportados")
+                st.write("- EDF/EDF+ (Europeo)")
+                st.write("- BDF (Biosemi)")
+                st.write("- Binario personalizado")
+                st.write("- RAW (Datos crudos)")
+                st.write("- Auto-detección inteligente")
             
             with col3:
-                st.markdown("### 🏥 Arritmias Detectadas")
-                st.markdown("""
-                - Fibrilación Auricular
-                - Taquicardia Ventricular  
-                - Extrasístoles (PVC)
-                - Bigeminismo/Trigeminismo
-                - Bloqueos AV
-                - Patrones complejos
-                - Y más...
-                """)
+                st.write("### 🏥 Arritmias Detectadas")
+                st.write("- Fibrilación Auricular")
+                st.write("- Taquicardia Ventricular")  
+                st.write("- Extrasístoles (PVC)")
+                st.write("- Bigeminismo/Trigeminismo")
+                st.write("- Bloqueos AV")
+                st.write("- Patrones complejos")
+                st.write("- Y más...")
     
     def render_file_upload(self):
         """Interfaz de carga de archivos mejorada"""
-        st.markdown('<div class="sub-header">📤 Carga de Archivo ECG</div>', unsafe_allow_html=True)
+        st.write("### 📤 Carga de Archivo ECG")
         
         col1, col2 = st.columns([2, 1])
         
@@ -2043,7 +1975,7 @@ class ECGAppInterface:
     
     def render_comprehensive_analysis(self, analysis_results):
         """Mostrar análisis comprehensivo mejorado"""
-        st.markdown('<div class="sub-header">📊 Análisis Comprehensivo</div>', unsafe_allow_html=True)
+        st.write("### 📊 Análisis Comprehensivo")
         
         if 'error' in analysis_results:
             st.error(f"❌ Error en el análisis: {analysis_results['error']}")
@@ -2072,7 +2004,7 @@ class ECGAppInterface:
     
     def _render_signal_quality(self, quality_results):
         """Renderizar panel de calidad de señal"""
-        st.markdown("### 🔍 Calidad de Señal")
+        st.write("### 🔍 Calidad de Señal")
         
         col1, col2, col3, col4 = st.columns(4)
         
@@ -2116,7 +2048,7 @@ class ECGAppInterface:
     def _render_artifact_analysis(self, artifact_results):
         """Renderizar análisis de artefactos"""
         if artifact_results.get('artifact_count', 0) > 0:
-            st.markdown("### ⚠️ Análisis de Artefactos")
+            st.write("### ⚠️ Análisis de Artefactos")
             
             st.warning(f"Se detectaron {artifact_results['artifact_count']} tipos de artefactos")
             
@@ -2141,33 +2073,40 @@ class ECGAppInterface:
         diagnosis = clinical_alerts.get('primary_diagnosis', '')
         
         alert_configs = {
-            'CRITICAL': ('critical-box', '🔴', 'ALERTA CRÍTICA'),
-            'HIGH': ('warning-box', '🟠', 'ALERTA ALTA'), 
-            'MEDIUM': ('warning-box', '🟡', 'ALERTA MEDIA'),
-            'LOW': ('info-box', '🔵', 'INFORMACIÓN'),
-            'NORMAL': ('success-box', '🟢', 'NORMAL')
+            'CRITICAL': ('🔴', 'ALERTA CRÍTICA'),
+            'HIGH': ('🟠', 'ALERTA ALTA'), 
+            'MEDIUM': ('🟡', 'ALERTA MEDIA'),
+            'LOW': ('🔵', 'INFORMACIÓN'),
+            'NORMAL': ('🟢', 'NORMAL')
         }
         
-        css_class, emoji, title = alert_configs.get(alert_level, ('info-box', '🔵', 'INFORMACIÓN'))
+        emoji, title = alert_configs.get(alert_level, ('🔵', 'INFORMACIÓN'))
         
-        st.markdown(f'<div class="{css_class}">', unsafe_allow_html=True)
-        st.markdown(f"### {emoji} {title}: {diagnosis}")
-        st.markdown(f"**Probabilidad:** {probability:.1%}")
+        if alert_level == 'CRITICAL':
+            st.error(f"### {emoji} {title}: {diagnosis}")
+        elif alert_level == 'HIGH':
+            st.warning(f"### {emoji} {title}: {diagnosis}")
+        elif alert_level == 'MEDIUM':
+            st.warning(f"### {emoji} {title}: {diagnosis}")
+        elif alert_level == 'LOW':
+            st.info(f"### {emoji} {title}: {diagnosis}")
+        else:
+            st.success(f"### {emoji} {title}: {diagnosis}")
         
-        st.markdown("**Recomendaciones:**")
+        st.write(f"**Probabilidad:** {probability:.1%}")
+        
+        st.write("**Recomendaciones:**")
         for rec in clinical_alerts.get('recommendations', []):
-            st.markdown(f"• {rec}")
+            st.write(f"• {rec}")
         
         if clinical_alerts.get('immediate_actions'):
-            st.markdown("**Acciones inmediatas:**")
+            st.write("**Acciones inmediatas:**")
             for action in clinical_alerts['immediate_actions']:
-                st.markdown(f"• {action}")
-        
-        st.markdown('</div>', unsafe_allow_html=True)
+                st.write(f"• {action}")
     
     def _render_arrhythmia_analysis(self, analysis_results):
         """Renderizar análisis de arritmias"""
-        st.markdown("### 🏥 Análisis de Arritmias")
+        st.write("### 🏥 Análisis de Arritmias")
         
         arrhythmia_scores = analysis_results.get('arrhythmia_scores', {})
         validated_diagnoses = analysis_results.get('validated_diagnoses', {})
@@ -2215,25 +2154,25 @@ class ECGAppInterface:
         # Leyenda
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.markdown("🟢 Baja probabilidad (<30%)")
-            st.markdown("🟡 Probabilidad media (30-70%)")
+            st.write("🟢 Baja probabilidad (<30%)")
+            st.write("🟡 Probabilidad media (30-70%)")
         with col2:
-            st.markdown("🔴 Alta probabilidad (>70%)")
-            st.markdown("⚪ No cumple criterios clínicos")
+            st.write("🔴 Alta probabilidad (>70%)")
+            st.write("⚪ No cumple criterios clínicos")
         with col3:
-            st.markdown("✅ Validez clínica confirmada")
-            st.markdown("❌ Validez clínica cuestionada")
+            st.write("✅ Validez clínica confirmada")
+            st.write("❌ Validez clínica cuestionada")
     
     def _render_explanations(self, explanation):
         """Renderizar explicaciones del diagnóstico"""
         if explanation:
-            st.markdown("### 📋 Explicación del Diagnóstico")
+            st.write("### 📋 Explicación del Diagnóstico")
             st.info(explanation)
     
     def _render_trend_analysis(self, trend_analysis):
         """Renderizar análisis de tendencias"""
         if trend_analysis.get('total_changes', 0) > 0:
-            st.markdown("### 📈 Análisis de Tendencia")
+            st.write("### 📈 Análisis de Tendencia")
             
             col1, col2 = st.columns(2)
             
@@ -2253,12 +2192,12 @@ class ECGAppInterface:
     
     def _render_feedback_section(self, analysis_results):
         """Renderizar sección de feedback"""
-        st.markdown("### 💬 Sistema de Feedback")
+        st.write("### 💬 Sistema de Feedback")
         
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown("#### ¿Fue útil el diagnóstico?")
+            st.write("#### ¿Fue útil el diagnóstico?")
             
             feedback_type = st.selectbox(
                 "Tipo de feedback",
@@ -2281,7 +2220,7 @@ class ECGAppInterface:
                     )
         
         with col2:
-            st.markdown("#### Insights de Aprendizaje")
+            st.write("#### Insights de Aprendizaje")
             insights = self.detector.learning_system.get_learning_insights()
             
             if 'message' in insights:
@@ -2291,13 +2230,13 @@ class ECGAppInterface:
                 st.metric("Feedbacks Recibidos", insights['total_feedbacks'])
                 
                 if insights.get('condition_accuracy'):
-                    st.markdown("**Precisión por Condición:**")
+                    st.write("**Precisión por Condición:**")
                     for condition, accuracy in insights['condition_accuracy'].items():
                         st.write(f"• {condition}: {accuracy:.1%}")
     
     def _plot_ecg_signal(self, ecg_signal, sampling_rate):
         """Visualización mejorada de la señal ECG"""
-        st.markdown("### 📈 Visualización de la Señal ECG")
+        st.write("### 📈 Visualización de la Señal ECG")
         
         # Selector de segmento
         total_samples = len(ecg_signal)
@@ -2338,7 +2277,7 @@ class ECGAppInterface:
 
     def _generate_clinical_report(self, analysis_results, ecg_signal, sampling_rate, filename):
         """Generar reporte clínico completo"""
-        st.markdown("### 📄 Generar Reporte Clínico")
+        st.write("### 📄 Generar Reporte Clínico")
         
         # Información del paciente (opcional)
         with st.expander("👤 Información del Paciente (Opcional)"):
@@ -2527,45 +2466,33 @@ class ECGAppInterface:
         
         # Información adicional cuando no hay archivo
         else:
-            st.markdown("""
-            <div class="info-box">
-                <h3>👆 Carga tu archivo ECG para comenzar</h3>
-                <p>Esta aplicación analiza señales electrocardiográficas usando inteligencia artificial avanzada 
-                para detectar posibles arritmias y patrones cardíacos anormales.</p>
-                
-                <h4>Características principales:</h4>
-                <ul>
-                    <li>🔄 <strong>Procesamiento robusto</strong> de múltiples formatos de archivo</li>
-                    <li>🔍 <strong>Detección avanzada</strong> de arritmias complejas</li>
-                    <li>🚨 <strong>Sistema de alertas</strong> con prioridades clínicas</li>
-                    <li>📋 <strong>Validación</strong> con criterios clínicos establecidos</li>
-                    <li>📈 <strong>Análisis de tendencias</strong> temporales</li>
-                    <li>💡 <strong>Explicaciones</strong> comprensibles de los diagnósticos</li>
-                    <li>📊 <strong>Reportes clínicos</strong> completos y descargables</li>
-                </ul>
-            </div>
-            """, unsafe_allow_html=True)
+            st.info("👆 Carga tu archivo ECG para comenzar")
+            st.write("Esta aplicación analiza señales electrocardiográficas usando inteligencia artificial avanzada para detectar posibles arritmias y patrones cardíacos anormales.")
+            
+            st.write("### Características principales:")
+            st.write("🔄 **Procesamiento robusto** de múltiples formatos de archivo")
+            st.write("🔍 **Detección avanzada** de arritmias complejas")
+            st.write("🚨 **Sistema de alertas** con prioridades clínicas")
+            st.write("📋 **Validación** con criterios clínicos establecidos")
+            st.write("📈 **Análisis de tendencias** temporales")
+            st.write("💡 **Explicaciones** comprensibles de los diagnósticos")
+            st.write("📊 **Reportes clínicos** completos y descargables")
             
             # Ejemplo de formato de archivo binario
             with st.expander("📋 Guía de Formatos Binarios"):
-                st.markdown("""
-                ### Configuración para Archivos Binarios
-                
-                **Formato de datos comunes:**
-                - `int16`: Entero 16-bit con signo (común en dispositivos médicos)
-                - `float32`: Punto flotante 32-bit (alta precisión)
-                - `uint16`: Entero 16-bit sin signo
-                
-                **Ejemplo de estructura:**
-                ```
-                [Cabecera: 0-512 bytes][Muestra 1: 2 bytes][Muestra 2: 2 bytes]...
-                ```
-                
-                **Parámetros típicos:**
-                - **Bytes por muestra:** 2 (int16) o 4 (float32)
-                - **Tamaño cabecera:** 0-1024 bytes
-                - **Frecuencia:** 250-1000 Hz
-                """)
+                st.write("### Configuración para Archivos Binarios")
+                st.write("**Formato de datos comunes:**")
+                st.write("- `int16`: Entero 16-bit con signo (común en dispositivos médicos)")
+                st.write("- `float32`: Punto flotante 32-bit (alta precisión)")
+                st.write("- `uint16`: Entero 16-bit sin signo")
+                st.write("")
+                st.write("**Ejemplo de estructura:**")
+                st.code("[Cabecera: 0-512 bytes][Muestra 1: 2 bytes][Muestra 2: 2 bytes]...")
+                st.write("")
+                st.write("**Parámetros típicos:**")
+                st.write("- **Bytes por muestra:** 2 (int16) o 4 (float32)")
+                st.write("- **Tamaño cabecera:** 0-1024 bytes")
+                st.write("- **Frecuencia:** 250-1000 Hz")
 
 # =============================================================================
 # FUNCIÓN PRINCIPAL
@@ -2578,12 +2505,10 @@ def main():
         app.run()
     except Exception as e:
         st.error(f"❌ Error crítico en la aplicación: {str(e)}")
-        st.info("""
-        **Solución de problemas:**
-        - Verifique que todas las dependencias estén instaladas
-        - Reinicie la aplicación
-        - Si el problema persiste, contacte al soporte técnico
-        """)
+        st.info("**Solución de problemas:**")
+        st.write("- Verifique que todas las dependencias estén instaladas")
+        st.write("- Reinicie la aplicación")
+        st.write("- Si el problema persiste, contacte al soporte técnico")
 
 # Ejecutar la aplicación
 if __name__ == "__main__":
