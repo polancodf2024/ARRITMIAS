@@ -1037,7 +1037,7 @@ def apply_smart_enhancement(img_array):
         return img_array
 
 def analyze_image_quality_improved(img_array):
-    """Análisis de calidad MEJORADO - menos estricto"""
+    """Análisis de calidad"""
     try:
         gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY) if len(img_array.shape) == 3 else img_array
         height, width = gray.shape
@@ -1311,7 +1311,7 @@ def validate_with_letters(chagas_analysis, quality_analysis, text_detection, let
         notes = "Confianza insuficiente"
     else:
         result = chagas_analysis['result']
-        notes = "Análisis completado"
+        notes = "Análisis AI completado"
         
         if letters_detection and letters_detection['letters_found']:
             notes += f" - Letras: {', '.join(letters_detection['letters_found'])}"
@@ -1325,7 +1325,7 @@ def validate_with_letters(chagas_analysis, quality_analysis, text_detection, let
 
 def render_capture_tab():
     """Pestaña de captura y análisis principal - COMPLETAMENTE MEJORADA"""
-    st.header("🪳 Análisis Principal con ML Remoto")
+    st.header("🪳 Análisis AI")
     
     if len(st.session_state.learning_data) >= 2 and st.session_state.training_count > 0:
         st.success("✅ Sistema de ML remoto activo - Usando aprendizaje acumulado en servidor")
@@ -1947,17 +1947,17 @@ def render_guide_tab():
 # Pestañas principales
 def main():
     st.set_page_config(
-        page_title="Analizador Chagas con Aprendizaje Automático Remoto",
+        page_title="Detector Chagas AI",
         page_icon="🪳",  # CAMBIADO: Chinche besucona en lugar de mosquito
         layout="centered",
         initial_sidebar_state="expanded"
     )
     
     initialize_learning_system()
-    check_https_status()
+  #  check_https_status()
     
-    st.title("🪳 Analizador Chagas con APRENDIZAJE AUTOMÁTICO REMOTO")  # CAMBIADO: Icono de chinche
-    st.markdown("### **Sistema que mejora con cada evaluación - Almacenamiento 100% Remoto**")
+    st.title("🪳 Detector Chagas AI")  # CAMBIADO: Icono de chinche
+  #  st.markdown("### **Sistema que mejora con cada evaluación - Almacenamiento 100% Remoto**")
     
     with st.sidebar:
         st.header("🧠 Sistema de Aprendizaje Remoto")
@@ -2007,7 +2007,7 @@ def main():
             st.rerun()
     
     tab1, tab2, tab3, tab4 = st.tabs([
-        "🪳 Análisis", "📊 Evaluación", "🧠 Aprendizaje", "📚 Guía"  # CAMBIADO: Icono de chinche
+        "🪳 Análisis AI", "📊 Evaluación", "🧠 Aprendizaje", "📚 Guía"  # CAMBIADO: Icono de chinche
     ])
     
     with tab1:
